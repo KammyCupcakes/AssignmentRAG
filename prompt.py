@@ -16,7 +16,7 @@ def log_unanswered_questions(question):
         
         if not question:
             return
-        
+        # if the question is not seen yet. Write to the unanswered file.
         if not os.path.exists(UNANSWERED_FILE):
             with open(UNANSWERED_FILE, "w", encoding="utf-8") as file:
                 file.write(question + "\n")
@@ -25,6 +25,7 @@ def log_unanswered_questions(question):
         with open(UNANSWERED_FILE, "r", encoding="utf-8") as file:
             existing_questions = [line.strip().lower() for line in file]
 
+        # stops previously appeneded questions from being overwritten
         if question.lower() not in existing_questions:
             with open(UNANSWERED_FILE, "a", encoding="utf-8") as file:
                 file.write(question + "\n")
