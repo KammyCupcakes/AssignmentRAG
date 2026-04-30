@@ -5,6 +5,30 @@ import os
 
 load_dotenv()
 
+# Store any unanswered question by the chatbot into the unanswered_questions.txt file
+# this allows us to refer to the txt file, and update our pdf data.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UNANSWERED_FILE = os.path.join(BASE_DIR, "unanswered_questions.txt")
+
+def log_unanswered_questions(question):
+    with open(UNANSWERED_FILE, "a", encoding="utf-8") as file:
+        file.write(question + "\n")
+        
+        if not question:
+            return
+        
+        if not os.path.exists(UNANSWERED_FILE):
+            with open(UNANSWERED_FILE, "w", encoding="utf-8") as file:
+                file.write(question + "\n")
+            return
+        
+        with open(UNANSWERED_FILE, "r", encoding="utf-8") as file:
+            existing_questions = [line.strip().lower() for line in file]
+
+        if question.lower() not in existing_questions:
+            with open(UNANSWERED_FILE, "a", encoding="utf-8") as file:
+                file.write(question + "\n")
+
 # DEBUG
 # api_key = os.getenv("OPENROUTER_API_KEY")
 # if not api_key:
@@ -69,6 +93,20 @@ while True:
 
         answer = response.choices[0].message.content
         print(f"Assistant: {answer}\n")
+
+        # creating fallback phrases to help store unanswered questions returned by the chatbot
+
+        fallback_phrases = [
+            "I'm sorry, I don't have that information in my documents.",
+            "I don't know",
+            "I'm unsure, I don't have that information in my documents.",
+            "Sorry, I don't know."
+            "I do not know",
+            "I am not sure",
+            "I'm not sure"
+        ]
+        if any(phrase.lower() in answer.lower() for phrase in fallback_phrases):
+            log_unanswered_questions(user_query)
 
         # Add the assistant's response to the conversation history for future context
         messages_history.append({"role": "assistant", "content": answer})
