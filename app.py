@@ -39,17 +39,74 @@ HTML_TEMPLATE = """
             e.preventDefault();
             const message = input.value;
             input.value = '';
-            chat.innerHTML += `<p><strong>You:</strong> ${message}</p>`;
+            chat.innerHTML += `<div class="message user">${message}</div>`;
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: message })
             });
             const data = await response.json();
-            chat.innerHTML += `<p><strong>Assistant:</strong> ${data.response}</p>`;
+            chat.innerHTML += `<div class="message assistant">${data.response}</div>`;
             chat.scrollTop = chat.scrollHeight;
         });
     </script>
+    <style>
+    body { font-family: Arial, sans-serif; background-color: #003366; color: white; margin: 0; padding: 20px; }
+
+    .container {
+        max-width: 600px;
+        margin: auto;
+        background-color: white;
+        color: #003366;
+        padding: 20px;
+        border-radius: 8px;
+    }
+
+    #chat {
+        height: 300px;
+        overflow-y: auto;
+        border: 1px solid #003366;
+        padding: 10px;
+        margin-bottom: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .message {
+        max-width: 70%;
+        padding: 10px;
+        border-radius: 15px;
+        word-wrap: break-word;
+    }
+
+    .user {
+        align-self: flex-end;
+        background-color: #e0e0e0; /* gray bubble */
+        color: black;
+        border-bottom-right-radius: 0;
+    }
+
+    .assistant {
+        align-self: flex-start;
+        background-color: #003366;
+        color: white;
+        border-bottom-left-radius: 0;
+    }
+
+    input[type="text"] {
+        width: 80%;
+        padding: 10px;
+    }
+
+    button {
+        padding: 10px;
+        background-color: #003366;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+</style>
 </body>
 </html>
 """
