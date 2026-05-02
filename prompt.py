@@ -2,8 +2,17 @@ import chromadb
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
+import sys
 
 load_dotenv()
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BEACONNAV_SRC = os.path.join(BASE_DIR, "BeaconNav", "src")
+
+if BEACONNAV_SRC not in sys.path:
+    sys.path.insert(0, BEACONNAV_SRC)
+
+from main import get_route
 
 # Store any unanswered question by the chatbot into the unanswered_questions.txt file
 # this allows us to refer to the txt file, and update our pdf data.
@@ -11,24 +20,23 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UNANSWERED_FILE = os.path.join(BASE_DIR, "unanswered_questions.txt")
 
 def log_unanswered_questions(question):
-    with open(UNANSWERED_FILE, "a", encoding="utf-8") as file:
-        file.write(question + "\n")
+    question = question.strip()
         
-        if not question:
-            return
-        # if the question is not seen yet. Write to the unanswered file.
-        if not os.path.exists(UNANSWERED_FILE):
-            with open(UNANSWERED_FILE, "w", encoding="utf-8") as file:
-                file.write(question + "\n")
-            return
-        
-        with open(UNANSWERED_FILE, "r", encoding="utf-8") as file:
-            existing_questions = [line.strip().lower() for line in file]
+    if not question:
+        return
+    # if the question is not seen yet. Write to the unanswered file.
+    if not os.path.exists(UNANSWERED_FILE):
+        with open(UNANSWERED_FILE, "w", encoding="utf-8") as file:
+            file.write(question + "\n")
+        return
+    
+    with open(UNANSWERED_FILE, "r", encoding="utf-8") as file:
+        existing_questions = [line.strip().lower() for line in file]
 
-        # stops previously appeneded questions from being overwritten
-        if question.lower() not in existing_questions:
-            with open(UNANSWERED_FILE, "a", encoding="utf-8") as file:
-                file.write(question + "\n")
+    # stops previously appeneded questions from being overwritten
+    if question.lower() not in existing_questions:
+        with open(UNANSWERED_FILE, "a", encoding="utf-8") as file:
+            file.write(question + "\n")
 
 # DEBUG
 # api_key = os.getenv("OPENROUTER_API_KEY")
@@ -62,6 +70,38 @@ while True:
 
     if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
         break
+
+    route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
+
+    if any(keyword in user_query.lower() for keyword in route_keywords):
+        start = input("Starting location: ")
+        end = input("Ending location: ")
+        algorithm = input("Algorithm ('astar' or 'dijkstra') [default: astar]: ")
+
+        if algorithm.strip() == "":
+            algorithm = "astar"
+
+        try:
+            route = get_route(start, end, algorithm, show_map=True)
+
+            if not route["success"]:
+                print(f"Assistant: {route['error']}\n")
+                continue
+
+            print(
+                f"Assistant: Here is the walking route information:\n"
+                f"Start: {route['start']}\n"
+                f"End: {route['end']}\n"
+                f"Algorithm: {route['algorithm']}\n"
+                f"Estimated walk time: {route['walk_time_minutes']:.1f} minutes\n"
+                f"Walking distance: {route['distance_miles']:.2f} miles\n"
+                f"Expanded nodes: {route['expanded_nodes']}\n"
+            )
+
+        except Exception as e:
+            print(f"Assistant: I could not calculate the walking route right now. Error: {e}\n")
+
+        continue
 
     results = collection.query(
         query_texts=[user_query],
@@ -101,7 +141,7 @@ while True:
             "I'm sorry, I don't have that information in my documents.",
             "I don't know",
             "I'm unsure, I don't have that information in my documents.",
-            "Sorry, I don't know."
+            "Sorry, I don't know.",
             "I do not know",
             "I am not sure",
             "I'm not sure"
