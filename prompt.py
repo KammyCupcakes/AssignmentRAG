@@ -63,45 +63,15 @@ client = OpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY"),
 )
 
-print("Hello, I am your assistant for transportation at UMass Boston. I can help you with questions about getting to and around the campus using public transportation. Feel free to ask me anything related to this topic! Type 'exit' to stop.\n")
-
-while True:
-    user_query = input("You: ")
-
+def handle_query(user_query):
     if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
-        break
+        return "Goodbye!"
 
     route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
 
     if any(keyword in user_query.lower() for keyword in route_keywords):
-        start = input("Starting location: ")
-        end = input("Ending location: ")
-        algorithm = input("Algorithm ('astar' or 'dijkstra') [default: astar]: ")
-
-        if algorithm.strip() == "":
-            algorithm = "astar"
-
-        try:
-            route = get_route(start, end, algorithm, show_map=True)
-
-            if not route["success"]:
-                print(f"Assistant: {route['error']}\n")
-                continue
-
-            print(
-                f"Assistant: Here is the walking route information:\n"
-                f"Start: {route['start']}\n"
-                f"End: {route['end']}\n"
-                f"Algorithm: {route['algorithm']}\n"
-                f"Estimated walk time: {route['walk_time_minutes']:.1f} minutes\n"
-                f"Walking distance: {route['distance_miles']:.2f} miles\n"
-                f"Expanded nodes: {route['expanded_nodes']}\n"
-            )
-
-        except Exception as e:
-            print(f"Assistant: I could not calculate the walking route right now. Error: {e}\n")
-
-        continue
+        # For web UI, simulate inputs or handle via session; here, return a prompt for locations
+        return "Please provide starting location, ending location, and algorithm (astar or dijkstra)."
 
     results = collection.query(
         query_texts=[user_query],
@@ -110,11 +80,7 @@ while True:
     documents = results.get('documents', [[]])[0]
     context = "\n\n".join(documents)
 
-#print results['documents']
-#print results['metadatas']
-
-
-# Telling the AI about what specific documents to use for the current question
+    # Telling the AI about what specific documents to use for the current question
     current_system_prompt = (
         "You are a helpful assistant for UMass Boston transportation. "
         "Use ONLY the following context to answer. If the answer is not in the context, "
@@ -133,7 +99,6 @@ while True:
         )
 
         answer = response.choices[0].message.content
-        print(f"Assistant: {answer}\n")
 
         # creating fallback phrases to help store unanswered questions returned by the chatbot
 
@@ -152,6 +117,52 @@ while True:
         # Add the assistant's response to the conversation history for future context
         messages_history.append({"role": "assistant", "content": answer})
 
+        return answer
+
     except Exception as e:
-        print(f"Assistant: I hit an error: {e}")
+        return f"I hit an error: {e}"
+
+if __name__ == "__main__":
+    print("Hello, I am your assistant for transportation at UMass Boston. I can help you with questions about getting to and around the campus using public transportation. Feel free to ask me anything related to this topic! Type 'exit' to stop.\n")
+
+    while True:
+        user_query = input("You: ")
+
+        if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
+            break
+
+        route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
+
+        if any(keyword in user_query.lower() for keyword in route_keywords):
+            start = input("Starting location: ")
+            end = input("Ending location: ")
+            algorithm = input("Algorithm ('astar' or 'dijkstra') [default: astar]: ")
+
+            if algorithm.strip() == "":
+                algorithm = "astar"
+
+            try:
+                route = get_route(start, end, algorithm, show_map=True)
+
+                if not route["success"]:
+                    print(f"Assistant: {route['error']}\n")
+                    continue
+
+                print(
+                    f"Assistant: Here is the walking route information:\n"
+                    f"Start: {route['start']}\n"
+                    f"End: {route['end']}\n"
+                    f"Algorithm: {route['algorithm']}\n"
+                    f"Estimated walk time: {route['walk_time_minutes']:.1f} minutes\n"
+                    f"Walking distance: {route['distance_miles']:.2f} miles\n"
+                    f"Expanded nodes: {route['expanded_nodes']}\n"
+                )
+
+            except Exception as e:
+                print(f"Assistant: I could not calculate the walking route right now. Error: {e}\n")
+
+            continue
+
+        answer = handle_query(user_query)
+        print(f"Assistant: {answer}\n")
 
