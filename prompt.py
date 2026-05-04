@@ -3,6 +3,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import sys
+from route_parser import parse_route_query
 
 load_dotenv()
 
@@ -63,15 +64,27 @@ client = OpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY"),
 )
 
+def format_route_request(route_info):
+    if route_info["missing"] == "start":
+        return "I can help with that route. Where are you starting from?"
+
+    if route_info["missing"] == "destination":
+        return "I can help with that route. Where are you trying to go?"
+
+    return (
+        "Route request detected.\n"
+        f"Start: {route_info['start']}\n"
+        f"Destination: {route_info['destination']}\n"
+        f"Algorithm: {route_info['algorithm']}"
+    )
+
 def handle_query(user_query):
     if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
         return "Goodbye!"
 
-    route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
-
-    if any(keyword in user_query.lower() for keyword in route_keywords):
-        # For web UI, simulate inputs or handle via session; here, return a prompt for locations
-        return "Please provide starting location, ending location, and algorithm (astar or dijkstra)."
+    route_info = parse_route_query(user_query)
+    if route_info["is_route"]:
+        return format_route_request(route_info)
 
     results = collection.query(
         query_texts=[user_query],
@@ -131,15 +144,18 @@ if __name__ == "__main__":
         if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
             break
 
-        route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
+        route_info = parse_route_query(user_query)
 
-        if any(keyword in user_query.lower() for keyword in route_keywords):
-            start = input("Starting location: ")
-            end = input("Ending location: ")
-            algorithm = input("Algorithm ('astar' or 'dijkstra') [default: astar]: ")
+        if route_info["is_route"]:
+            start = route_info["start"]
+            end = route_info["destination"]
+            algorithm = route_info["algorithm"]
 
-            if algorithm.strip() == "":
-                algorithm = "astar"
+            if not start:
+                start = input("Starting location: ")
+
+            if not end:
+                end = input("Ending location: ")
 
             try:
                 route = get_route(start, end, algorithm, show_map=True)
