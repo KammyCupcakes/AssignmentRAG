@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files
+.env
+.env.*
+
+# Local temp/cache
+.tmp/
+.pytest_cache/
+.mypy_cache/
+
+# Notebook and editor artifacts
+.ipynb_checkpoints/
+.vscode/
+
+# Local probe databases
+chroma_db_probe/
+chroma_db_probe2/
+chroma_db_probe3/
