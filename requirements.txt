@@ -5,6 +5,7 @@ langchain
 langchain_community
 langchain_text_splitters
 pypdf
+flask
 overpy~=0.7
 matplotlib~=3.10.1
 Cartopy~=0.24.1

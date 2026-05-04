@@ -19,7 +19,7 @@ Make sure all required packages are installed:
 
 pip install flask chromadb openai python-dotenv networkx
 
-(Add any additional dependencies your project uses if needed.)
+(Add any additional dependencies the project needs using the requirements.txt.)
 
 3. Run the Ingestion Pipeline
 
