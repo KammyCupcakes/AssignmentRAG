@@ -202,6 +202,11 @@ def handle_query_web(user_query, show_route_map=False):
     map_result = {"route_map_url": None}
 
     def web_route_getter(start, end, algorithm="astar", show_map=False):
+        import matplotlib.pyplot as plt
+
+        # Web requests run in worker threads; use a non-GUI backend for safe image rendering.
+        plt.switch_backend("Agg")
+
         map_filename = f"route_{uuid.uuid4().hex}.png"
         map_file_path = os.path.join(static_routes_dir, map_filename)
         route_result = get_route(
