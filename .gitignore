@@ -5,3 +5,43 @@ umb_way_data.pkl
 umb_graph.pkl
 /chroma_db
 web_crawl_documents.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files
+.env
+.env.*
+
+# Local temp/cache
+.tmp/
+.pytest_cache/
+.mypy_cache/
+
+# Local database runtime files
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Notebook and editor artifacts
+.ipynb_checkpoints/
+.vscode/
+
+# Local probe databases
+chroma_db_probe/
+chroma_db_probe2/
+chroma_db_probe3/
+
+# BeaconNav generated route/cache data
+umb_graph.pkl
+umb_way_data.pkl
+entrance_cache/
+BeaconNav/cache/
+test_resolved_location_nodes*.json

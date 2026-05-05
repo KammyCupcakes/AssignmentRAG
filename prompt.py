@@ -4,6 +4,17 @@ from dotenv import load_dotenv
 from tools import TOOLS, execute_tool_call
 import os
 from typing import Any
+import sys
+from navigation_flow import missing_or_unresolved_message
+from route_state import (
+    clear_last_route_context,
+    get_last_route_context,
+    handle_route_continuation_query,
+    handle_route_info_with_context,
+    start_pending_route,
+    try_complete_pending_route,
+)
+from route_parser import parse_route_query
 
 load_dotenv()
 
@@ -77,6 +88,20 @@ def log_unanswered_questions(question):
 
 # setting the environment
 
+DATA_PATH = os.path.join(BASE_DIR, "data")
+CHROMA_PATH = os.path.join(BASE_DIR, "chroma_db")
+collection = None
+
+
+def get_collection():
+    global collection
+    if collection is None:
+        import chromadb
+
+        chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
+        collection = chroma_client.get_or_create_collection(name="public_transportation")
+    return collection
+
 messages_history = [
     {"role": "system", "content": SYSTEM_PROMPT}
 ]
@@ -86,15 +111,79 @@ client = OpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY"),
 )
 
+def format_route_request(route_info):
+    if route_info.get("clarification_reason") == "unresolved_start":
+        return (
+            "I can help with that route, but I could not confidently identify your "
+            "starting location. Can you rephrase it using a campus building name?"
+        )
+
+    if route_info.get("clarification_reason") == "unresolved_destination":
+        return (
+            "I can help with that route, but I could not confidently identify your "
+            "destination. Can you rephrase it using a campus building name?"
+        )
+
+    if route_info["missing"] == "start":
+        return "I can help with that route. Where are you starting from?"
+
+    if route_info["missing"] == "destination":
+        return "I can help with that route. Where are you trying to go?"
+
+    start = route_info["resolved_start"] or route_info["start"]
+    destination = route_info["resolved_destination"] or route_info["destination"]
+
+    return (
+        "Route request detected.\n"
+        f"Start: {start}\n"
+        f"Destination: {destination}\n"
+        f"Algorithm: {route_info['algorithm']}"
+    )
+
 def handle_query(user_query):
+    user_query = (user_query or "").strip()
+
+    pending_route_response = try_complete_pending_route(user_query, get_route)
+    if pending_route_response is not None:
+        return pending_route_response
+
     if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
+        clear_last_route_context()
         return "Goodbye!"
 
-    # route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
+    if user_query.lower() in ["cancel", "nevermind", "never mind"] and get_last_route_context():
+        clear_last_route_context()
+        return "Okay, I cleared the last route context."
 
-    # if any(keyword in user_query.lower() for keyword in route_keywords):
-    #     # For web UI, simulate inputs or handle via session; here, return a prompt for locations
-    #     return "Please provide starting location, ending location, and algorithm (astar or dijkstra)."
+    route_info = parse_route_query(user_query)
+    if route_info["is_route"] and not missing_or_unresolved_message(route_info):
+        return handle_route_info_with_context(route_info, get_route)
+
+    route_continuation_response = handle_route_continuation_query(user_query, get_route)
+    if route_continuation_response is not None:
+        return route_continuation_response
+
+    if route_info["is_route"]:
+        if missing_or_unresolved_message(route_info):
+            return start_pending_route(route_info)
+
+        return handle_route_info_with_context(route_info, get_route)
+
+    results = get_collection().query(
+        query_texts=[user_query],
+        n_results=3
+    )
+    documents = results.get('documents', [[]])[0]
+    context = "\n\n".join(documents)
+
+    # Telling the AI about what specific documents to use for the current question
+    current_system_prompt = (
+        "You are a helpful assistant for UMass Boston transportation. "
+        "Use ONLY the following context to answer. If the answer is not in the context, "
+        "strictly say: 'I'm sorry, I don't have that information in my documents.'\n\n"
+        f"Context:\n{context}"
+    )
+    messages_history[0]["content"] = current_system_prompt
 
     # Add the user's message to the conversation history
     messages_history.append({"role": "user", "content": user_query})
@@ -208,6 +297,45 @@ if __name__ == "__main__":
 
         if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
             break
+
+        route_info = parse_route_query(user_query)
+
+        if route_info["is_route"]:
+            if route_info.get("clarification_reason"):
+                print(f"Assistant: {format_route_request(route_info)}\n")
+                continue
+
+            start = route_info["resolved_start"] or route_info["start"]
+            end = route_info["resolved_destination"] or route_info["destination"]
+            algorithm = route_info["algorithm"]
+
+            if not start:
+                start = input("Starting location: ")
+
+            if not end:
+                end = input("Ending location: ")
+
+            try:
+                route = get_route(start, end, algorithm, show_map=True)
+
+                if not route["success"]:
+                    print(f"Assistant: {route['error']}\n")
+                    continue
+
+                print(
+                    f"Assistant: Here is the walking route information:\n"
+                    f"Start: {route['start']}\n"
+                    f"End: {route['end']}\n"
+                    f"Algorithm: {route['algorithm']}\n"
+                    f"Estimated walk time: {route['walk_time_minutes']:.1f} minutes\n"
+                    f"Walking distance: {route['distance_miles']:.2f} miles\n"
+                    f"Expanded nodes: {route['expanded_nodes']}\n"
+                )
+
+            except Exception as e:
+                print(f"Assistant: I could not calculate the walking route right now. Error: {e}\n")
+
+            continue
 
         answer = handle_query(user_query)
         print(f"Assistant: {answer}\n")
