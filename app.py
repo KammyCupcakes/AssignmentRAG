@@ -78,6 +78,7 @@ HTML_TEMPLATE = """
         padding: 10px;
         border-radius: 15px;
         word-wrap: break-word;
+        white-space: pre-wrap;
     }
 
     .user {

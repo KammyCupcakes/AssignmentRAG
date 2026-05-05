@@ -46,6 +46,29 @@ class LocationResolverTests(unittest.TestCase):
         self.assertIsNone(result["canonical_name"])
         self.assertEqual(result["status"], "unresolved")
         self.assertEqual(result["confidence"], 0.0)
+        self.assertEqual(result["routing_candidates"], [])
+        self.assertIsNone(result["fallback_coordinate"])
+
+    def test_resolved_locations_expose_fallback_coordinate_field(self):
+        result = resolve_location("wheatley")
+
+        self.assertEqual(result["canonical_name"], "Wheatley Hall")
+        self.assertIn("fallback_coordinate", result)
+
+    def test_mccormack_has_routing_candidates(self):
+        result = resolve_location("mccormack")
+
+        self.assertEqual(result["canonical_name"], "McCormack Hall")
+        self.assertIn("McCormack Hall", result["routing_candidates"])
+        self.assertIn("McCormack", result["routing_candidates"])
+        self.assertIn("McCormack Building", result["routing_candidates"])
+
+    def test_quinn_has_routing_candidates(self):
+        result = resolve_location("quin building")
+
+        self.assertEqual(result["canonical_name"], "Quinn Administration Building")
+        self.assertIn("Quinn Administration Building", result["routing_candidates"])
+        self.assertIn("Quinn", result["routing_candidates"])
 
     def test_harborwalk_resolves_but_where_question_is_not_route(self):
         result = resolve_location("HarborWalk")
