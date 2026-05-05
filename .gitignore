@@ -1,0 +1,7 @@
+/chroma_db
+.env
+/__pycache__
+umb_way_data.pkl
+umb_graph.pkl
+/chroma_db
+web_crawl_documents.json

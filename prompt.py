@@ -1,23 +1,53 @@
-import chromadb
+import json
 from openai import OpenAI
 from dotenv import load_dotenv
+from tools import TOOLS, execute_tool_call
 import os
-import sys
+from typing import Any
 
 load_dotenv()
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BEACONNAV_SRC = os.path.join(BASE_DIR, "BeaconNav", "src")
-
-if BEACONNAV_SRC not in sys.path:
-    sys.path.insert(0, BEACONNAV_SRC)
-
-from main import get_route
 
 # Store any unanswered question by the chatbot into the unanswered_questions.txt file
 # this allows us to refer to the txt file, and update our pdf data.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UNANSWERED_FILE = os.path.join(BASE_DIR, "unanswered_questions.txt")
+
+FALLBACK_PHRASES = [
+    "I don't have that information in my documents",
+    "I don't know the answer to that",
+    "I don't have that information",
+    "I can't find that information in my documents",
+    "I'm sorry, I don't have that information in my documents"
+]
+
+SYSTEM_PROMPT = ("You are a helpful assistant for UMass Boston transportation. "
+        "If the user asks a question, try to answer it based on previous context first. If the answer is not found, search the documents using a tool call."
+        "If the user asks for walking directions, respond with a prompt to get unknown information (starting location and ending location), and make a tool call"
+        "to get the walking directions. Always use the provided tools or previous tool responses to answer the user's question, and do not attempt to generate them yourself. ")
+
+ONBOARDING_MESSAGE = ("Hello, I am your assistant for transportation at UMass Boston."
+"You can ask me questions about UMass Boston transportation, such as bus schedules, shuttle routes, parking information, and more. "
+"If you want to get walking directions between two locations, provide your starting location, ending location, and preferred algorithm (A* or Dijkstra). ")
+
+SUGGESTED_QUESTIONS = [
+    "What are the bus schedules for UMass Boston?",
+    "How do I get from West Garage to Campus center?",
+    "What shuttle routes are available on campus?",
+    "Where can I find information about parking permits?",
+]
+TOOLS_RESPONSE_MAX_TOKENS = 3000
+
+TOOL_REPROMPT_TEMPLATE = """Tool call results:
+{tool_results}
+
+Incorporate these results into your next response to the user, using them as needed to answer the user's question.
+If the tool results contain factual information relevant to the user's query, use that information in your response and cite it appropriately.
+If low confidence is False and at least one result is present, provide a direct answer from the top-ranked evidence and do not say you lack information.
+Always prioritize accuracy and grounding in the provided tool results when formulating your response.
+Treat the top-ranked evidence snippet as the primary grounding, then use additional results only if they add non-duplicative detail.
+If the tool results indicate an error or issue with retrieving information, respond strictly with one of the fallback phrases, 
+and no extra text:\n\nFALLBACK PHRASES: " + ", ".join(FALLBACK_PHRASES) + ". \n\n"
+"""
 
 def log_unanswered_questions(question):
     question = question.strip()
@@ -47,15 +77,8 @@ def log_unanswered_questions(question):
 
 # setting the environment
 
-DATA_PATH = r"data"
-CHROMA_PATH = r"chroma_db"
-
-chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-
-collection = chroma_client.get_or_create_collection(name="public_transportation")
-
 messages_history = [
-    {"role": "system", "content": "You are a helpful assistant for UMass Boston transportation"}
+    {"role": "system", "content": SYSTEM_PROMPT}
 ]
 
 client = OpenAI(
@@ -67,101 +90,124 @@ def handle_query(user_query):
     if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
         return "Goodbye!"
 
-    route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
+    # route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
 
-    if any(keyword in user_query.lower() for keyword in route_keywords):
-        # For web UI, simulate inputs or handle via session; here, return a prompt for locations
-        return "Please provide starting location, ending location, and algorithm (astar or dijkstra)."
-
-    results = collection.query(
-        query_texts=[user_query],
-        n_results=3
-    )
-    documents = results.get('documents', [[]])[0]
-    context = "\n\n".join(documents)
-
-    # Telling the AI about what specific documents to use for the current question
-    current_system_prompt = (
-        "You are a helpful assistant for UMass Boston transportation. "
-        "Use ONLY the following context to answer. If the answer is not in the context, "
-        "strictly say: 'I'm sorry, I don't have that information in my documents.'\n\n"
-        f"Context:\n{context}"
-    )
-    messages_history[0]["content"] = current_system_prompt
+    # if any(keyword in user_query.lower() for keyword in route_keywords):
+    #     # For web UI, simulate inputs or handle via session; here, return a prompt for locations
+    #     return "Please provide starting location, ending location, and algorithm (astar or dijkstra)."
 
     # Add the user's message to the conversation history
     messages_history.append({"role": "user", "content": user_query})
-
+    print(f"Current conversation history: {messages_history}")
     try:
         response = client.chat.completions.create(
             model="openai/gpt-oss-120b:free",
-            messages = messages_history # Passing all history here
+            messages = messages_history, # Passing all history here
+            tools=TOOLS,
         )
 
-        answer = response.choices[0].message.content
+        answer = response.choices[0].message
 
-        # creating fallback phrases to help store unanswered questions returned by the chatbot
+        tool_calls = answer.tool_calls or []
+        if tool_calls:
+            for tool_call in tool_calls:
+                function_name = tool_call.function.name
+                arguments_raw = tool_call.function.arguments or "{}"
 
-        fallback_phrases = [
-            "I'm sorry, I don't have that information in my documents.",
-            "I don't know",
-            "I'm unsure, I don't have that information in my documents.",
-            "Sorry, I don't know.",
-            "I do not know",
-            "I am not sure",
-            "I'm not sure"
-        ]
-        if any(phrase.lower() in answer.lower() for phrase in fallback_phrases):
+        tool_results: list[dict[str, Any]] = []
+        for tool_call in tool_calls:
+            function_name = tool_call.function.name
+            arguments_raw = tool_call.function.arguments or "{}"
+
+            try:
+                arguments = json.loads(arguments_raw)
+            except json.JSONDecodeError:
+                arguments = {}
+
+            database_path = os.path.join(BASE_DIR, "data", "chroma_db")
+
+            try:
+                tool_result = execute_tool_call(
+                    function_name,
+                    arguments,
+                    tool_context={"database_path": database_path},
+                )
+                tool_results.append(
+                    {
+                        "name": function_name,
+                        "arguments": arguments,
+                        "result": tool_result,
+                    }
+                )
+            except Exception as e:
+                tool_results.append(
+                    {
+                        "name": function_name,
+                        "arguments": arguments,
+                        "result": {"error": f"Error executing tool {function_name}: {str(e)}"},
+                    }
+                )
+
+        formatted_results = format_tool_results_for_prompt(tool_results)
+        generated_reprompt = TOOL_REPROMPT_TEMPLATE.format(tool_results=formatted_results)
+
+        messages_history.append({"role": "system", "content": generated_reprompt})
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-120b:free",
+            messages = messages_history,
+            tools=TOOLS,
+        )
+        final_message = response.choices[0].message
+
+        if (not final_message.content or any(phrase.lower() in final_message.content.lower() for phrase in FALLBACK_PHRASES)):
             log_unanswered_questions(user_query)
 
         # Add the assistant's response to the conversation history for future context
-        messages_history.append({"role": "assistant", "content": answer})
+        messages_history.append({"role": "assistant", "content": final_message.content})
 
-        return answer
+        return final_message.content
 
     except Exception as e:
         return f"I hit an error: {e}"
 
+def format_tool_results_for_prompt(tool_results) -> str:
+        prompt_blocks: list[str] = []
+        for tool_result in tool_results:
+            name = tool_result["name"]
+            result = tool_result["result"]
+            if isinstance(result, dict) and result.get("results") is not None:
+                lines = [
+                    f"Tool: {name}",
+                    f"Query: {result.get('query', '')}",
+                    f"Low confidence: {result.get('low_confidence', False)}",
+                ]
+                for item in result.get("results", [])[:5]:
+                    lines.extend(
+                        [
+                            f"Rank {item.get('rank', '?')} | Title: {item.get('title', 'Untitled')}",
+                            f"URL: {item.get('url', '')}",
+                            f"Matched terms: {', '.join(item.get('matched_terms', [])) or 'n/a'}",
+                            f"Why it matched: {', '.join(item.get('match_reasons', [])) or 'n/a'}",
+                            f"Evidence: {item.get('evidence_snippet', '')}",
+                        ]
+                    )
+                prompt_blocks.append("\n".join(lines))
+                continue
+            prompt_blocks.append(f"Tool: {name}\nResult: {result}")
+
+        combined_results = "\n\n".join(prompt_blocks).strip()
+        if len(combined_results) <= TOOLS_RESPONSE_MAX_TOKENS:
+            return combined_results
+        return combined_results[:TOOLS_RESPONSE_MAX_TOKENS] + "\n[Truncated additional results]"
+
 if __name__ == "__main__":
-    print("Hello, I am your assistant for transportation at UMass Boston. I can help you with questions about getting to and around the campus using public transportation. Feel free to ask me anything related to this topic! Type 'exit' to stop.\n")
+    print(ONBOARDING_MESSAGE)
 
     while True:
         user_query = input("You: ")
 
         if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
             break
-
-        route_keywords = ["walk", "walking", "route", "directions", "get from", "go from"]
-
-        if any(keyword in user_query.lower() for keyword in route_keywords):
-            start = input("Starting location: ")
-            end = input("Ending location: ")
-            algorithm = input("Algorithm ('astar' or 'dijkstra') [default: astar]: ")
-
-            if algorithm.strip() == "":
-                algorithm = "astar"
-
-            try:
-                route = get_route(start, end, algorithm, show_map=True)
-
-                if not route["success"]:
-                    print(f"Assistant: {route['error']}\n")
-                    continue
-
-                print(
-                    f"Assistant: Here is the walking route information:\n"
-                    f"Start: {route['start']}\n"
-                    f"End: {route['end']}\n"
-                    f"Algorithm: {route['algorithm']}\n"
-                    f"Estimated walk time: {route['walk_time_minutes']:.1f} minutes\n"
-                    f"Walking distance: {route['distance_miles']:.2f} miles\n"
-                    f"Expanded nodes: {route['expanded_nodes']}\n"
-                )
-
-            except Exception as e:
-                print(f"Assistant: I could not calculate the walking route right now. Error: {e}\n")
-
-            continue
 
         answer = handle_query(user_query)
         print(f"Assistant: {answer}\n")
