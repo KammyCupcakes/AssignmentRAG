@@ -2,6 +2,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import sys
+import uuid
 from navigation_flow import missing_or_unresolved_message
 from route_state import (
     clear_last_route_context,
@@ -108,10 +109,11 @@ def format_route_request(route_info):
         f"Algorithm: {route_info['algorithm']}"
     )
 
-def handle_query(user_query):
+
+def _handle_query_core(user_query, route_getter):
     user_query = (user_query or "").strip()
 
-    pending_route_response = try_complete_pending_route(user_query, get_route)
+    pending_route_response = try_complete_pending_route(user_query, route_getter)
     if pending_route_response is not None:
         return pending_route_response
 
@@ -125,9 +127,9 @@ def handle_query(user_query):
 
     route_info = parse_route_query(user_query)
     if route_info["is_route"] and not missing_or_unresolved_message(route_info):
-        return handle_route_info_with_context(route_info, get_route)
+        return handle_route_info_with_context(route_info, route_getter)
 
-    route_continuation_response = handle_route_continuation_query(user_query, get_route)
+    route_continuation_response = handle_route_continuation_query(user_query, route_getter)
     if route_continuation_response is not None:
         return route_continuation_response
 
@@ -135,7 +137,7 @@ def handle_query(user_query):
         if missing_or_unresolved_message(route_info):
             return start_pending_route(route_info)
 
-        return handle_route_info_with_context(route_info, get_route)
+        return handle_route_info_with_context(route_info, route_getter)
 
     results = get_collection().query(
         query_texts=[user_query],
@@ -185,6 +187,46 @@ def handle_query(user_query):
 
     except Exception as e:
         return f"I hit an error: {e}"
+
+
+def handle_query(user_query):
+    return _handle_query_core(user_query, get_route)
+
+
+def handle_query_web(user_query, show_route_map=False):
+    if not show_route_map:
+        return {"response": handle_query(user_query), "route_map_url": None}
+
+    static_routes_dir = os.path.join(BASE_DIR, "static", "routes")
+    os.makedirs(static_routes_dir, exist_ok=True)
+    map_result = {"route_map_url": None}
+
+    def web_route_getter(start, end, algorithm="astar", show_map=False):
+        map_filename = f"route_{uuid.uuid4().hex}.png"
+        map_file_path = os.path.join(static_routes_dir, map_filename)
+        route_result = get_route(
+            start,
+            end,
+            algorithm=algorithm,
+            show_map=False,
+            save_map_file=map_file_path,
+        )
+        if (
+            isinstance(route_result, dict)
+            and route_result.get("success")
+            and os.path.exists(map_file_path)
+        ):
+            map_result["route_map_url"] = f"/static/routes/{map_filename}"
+        return route_result
+
+    response = _handle_query_core(user_query, web_route_getter)
+    if not (isinstance(response, str) and response.startswith("Route found:")):
+        map_result["route_map_url"] = None
+
+    return {
+        "response": response,
+        "route_map_url": map_result["route_map_url"],
+    }
 
 if __name__ == "__main__":
     print("Hello, I am your assistant for transportation at UMass Boston. I can help you with questions about getting to and around the campus using public transportation. Feel free to ask me anything related to this topic! Type 'exit' to stop.\n")

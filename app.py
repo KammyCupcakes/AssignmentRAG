@@ -1,6 +1,6 @@
 from flask import Flask, request, render_template_string, session
 import os
-from prompt import handle_query
+from prompt import handle_query_web
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # For session management
@@ -26,6 +26,8 @@ HTML_TEMPLATE = """
         @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
         input[type="text"] { width: 80%; padding: 10px; }
         button { padding: 10px; background-color: #003366; color: white; border: none; cursor: pointer; }
+        .options { margin: 10px 0; color: #003366; font-size: 0.95rem; }
+        .route-image { max-width: 100%; border-radius: 8px; margin-top: 8px; border: 1px solid #d0d8e0; }
     </style>
 </head>
 <body>
@@ -36,12 +38,18 @@ HTML_TEMPLATE = """
         <form id="chat-form">
             <input type="text" id="user-input" placeholder="Ask a question..." required>
             <button type="submit">Send</button>
+            <div class="options">
+                <label>
+                    <input type="checkbox" id="show-route-map"> Show route map for navigation answers
+                </label>
+            </div>
         </form>
     </div>
     <script>
         const chat = document.getElementById('chat');
         const form = document.getElementById('chat-form');
         const input = document.getElementById('user-input');
+        const showRouteMap = document.getElementById('show-route-map');
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -56,11 +64,19 @@ HTML_TEMPLATE = """
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: message })
+                    body: JSON.stringify({
+                        query: message,
+                        show_route_map: showRouteMap.checked
+                    })
                 });
                 const data = await response.json();
                 document.getElementById(loadingMessage).remove();
-                chat.innerHTML += `<div class="message assistant">${data.response}</div>`;
+                let assistantHtml = `<div class="message assistant">${data.response}`;
+                if (data.route_map_url) {
+                    assistantHtml += `<br><img class="route-image" src="${data.route_map_url}" alt="Route map">`;
+                }
+                assistantHtml += `</div>`;
+                chat.innerHTML += assistantHtml;
                 chat.scrollTop = chat.scrollHeight;
             } catch (error) {
                 document.getElementById(loadingMessage).remove();
@@ -81,8 +97,9 @@ def index():
 def chat():
     data = request.get_json()
     query = data.get('query', '')
-    response = handle_query(query)
-    return {'response': response}
+    show_route_map = bool(data.get('show_route_map', False))
+    result = handle_query_web(query, show_route_map=show_route_map)
+    return result
 
 if __name__ == '__main__':
     app.run(debug=True)

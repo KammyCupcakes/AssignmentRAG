@@ -5,7 +5,7 @@ from location_search import get_location_nodes
 from algorithms.astar import astar
 from algorithms.dijkstras import dijkstra
 
-def get_route(start, end, algorithm="astar", show_map=True):
+def get_route(start, end, algorithm="astar", show_map=True, save_map_file=None):
     graph = osm.get_graph()
     start_nodes = get_location_nodes(start, graph)
     end_nodes = get_location_nodes(end, graph)
@@ -39,7 +39,7 @@ def get_route(start, end, algorithm="astar", show_map=True):
     estimate_walk_time = walking_distance / estimate_walk_speed
     miles = walking_distance * 0.000621371
 
-    if show_map:
+    if show_map or save_map_file:
         plotter.plot_route(
             path,
             graph,
@@ -47,7 +47,8 @@ def get_route(start, end, algorithm="astar", show_map=True):
             f"- Walking distance: {miles:.2f} miles \n\n"
             f"- Expanded nodes: {explored_nodes}",
             crop_to_route=True,
-            show=True,
+            show=show_map,
+            save_file=save_map_file,
         )
 
     return {
