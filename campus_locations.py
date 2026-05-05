@@ -186,6 +186,23 @@ CAMPUS_LOCATIONS = {
         "fallback_coordinate": None,
         "type": "transit",
     },
+    "harbor point": {
+        "canonical_name": "Harbor Point",
+        "aliases": [
+            "harbor point",
+            "hp",
+            "harbour point",
+            "the harbor point",
+            "the harbour point",
+        ],
+        "routing_candidates": [
+            "Harbor Point",
+            "Harbor Point UMass Boston",
+            "Harbor Point, University of Massachusetts Boston",
+        ],
+        "fallback_coordinate": None,
+        "type": "landmark",
+    },
     "harborwalk": {
         "canonical_name": "HarborWalk",
         "aliases": [
