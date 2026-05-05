@@ -17,6 +17,8 @@ HTML_TEMPLATE = """
         .container { max-width: 600px; margin: auto; background-color: white; color: #003366; padding: 20px; border-radius: 8px; }
         #chat { height: 300px; overflow-y: auto; border: 1px solid #003366; padding: 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px; }
         .message { max-width: 70%; padding: 10px; border-radius: 15px; word-wrap: break-word; white-space: pre-wrap; }
+        .message a { color: #66ccff; text-decoration: underline; }
+        .message a:hover { color: #99ccff; text-decoration: none; }
         .user { align-self: flex-end; background-color: #e0e0e0; color: black; border-bottom-right-radius: 0; }
         .assistant { align-self: flex-start; background-color: #003366; color: white; border-bottom-left-radius: 0; }
         .loading { align-self: flex-start; background-color: #003366; color: white; padding: 10px 15px; border-radius: 15px; border-bottom-left-radius: 0; display: inline-flex; align-items: center; gap: 6px; }
@@ -50,7 +52,10 @@ HTML_TEMPLATE = """
         const form = document.getElementById('chat-form');
         const input = document.getElementById('user-input');
         const showRouteMap = document.getElementById('show-route-map');
-
+        function formatLinks(text) {
+            const urlRegex = /(https?:\/\/[^\s<>"']*[^\s<>"'.,!?;:])/g;
+            return text.replace(urlRegex, (url) => `<a href="${url}" target="_blank" style="color: #66ccff;">${url}</a>`);
+        }
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const message = input.value;
@@ -71,7 +76,7 @@ HTML_TEMPLATE = """
                 });
                 const data = await response.json();
                 document.getElementById(loadingMessage).remove();
-                let assistantHtml = `<div class="message assistant">${data.response}`;
+                let assistantHtml = `<div class="message assistant">${formatLinks(data.response)}`;
                 if (data.route_map_url) {
                     assistantHtml += `<br><img class="route-image" src="${data.route_map_url}" alt="Route map">`;
                 }
