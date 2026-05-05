@@ -1,4 +1,5 @@
 import random
+import re
 import sys
 import os
 from openai.types.chat import ChatCompletionFunctionToolParam
@@ -32,7 +33,25 @@ def search_documents(query: str, max_results: int = 3) -> list[dict[str, Any]]:
     documents = results.get('documents', [[]])[0]
     return documents
 
+def clean_location_text(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    cleaned = re.sub(
+        r"\s+(?:using|with)\s+[\w*']+(?:\s+algorithm)?\b.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\s+(?:a\s*\*|astar|dijkstra)\s+algorithm\b.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip(" \t\r\n.,!?;:")
+
 def get_walking_directions(starting_location: str, ending_location: str, algorithm: str = random.choice(["astar", "dijkstra"])) -> dict[str, Any]:
+        starting_location = clean_location_text(starting_location)
+        ending_location = clean_location_text(ending_location)
         try:
             route = get_route(starting_location, ending_location, algorithm, show_map=True)
 
@@ -58,7 +77,7 @@ SEARCH_DOCUMENTS: ChatCompletionFunctionToolParam = {
                 "max_results": {
                     "type": "integer",
                     "description": "Maximum number of search results to return.",
-                    "default": 5,
+                    "default": 3,
                 },
             },
             "required": ["query"],
