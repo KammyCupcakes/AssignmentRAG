@@ -2,6 +2,8 @@ import re
 from difflib import SequenceMatcher
 
 
+# Fallback coordinates are optional routing points, not official door locations.
+# Keep them as None until a coordinate is verified from local project data/cache.
 CAMPUS_LOCATIONS = {
     "university hall": {
         "canonical_name": "University Hall",
@@ -13,6 +15,15 @@ CAMPUS_LOCATIONS = {
             "univ hall",
             "university hall umb",
         ],
+        "routing_candidates": [
+            "University Hall",
+            "University Hall UMass Boston",
+            "University Hall, University of Massachusetts Boston",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.3130367,
+            "lon": -71.0357383,
+        },
         "type": "building",
     },
     "mccormack hall": {
@@ -22,6 +33,17 @@ CAMPUS_LOCATIONS = {
             "mccormack hall",
             "mccormack building",
         ],
+        "routing_candidates": [
+            "McCormack Hall",
+            "McCormack",
+            "McCormack Building",
+            "McCormack Hall UMass Boston",
+            "McCormack Hall, University of Massachusetts Boston",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.3130494,
+            "lon": -71.0388723,
+        },
         "type": "building",
     },
     "quinn administration building": {
@@ -34,6 +56,17 @@ CAMPUS_LOCATIONS = {
             "quinn administration",
             "quinn administration building",
         ],
+        "routing_candidates": [
+            "Quinn Administration Building",
+            "Quinn Building",
+            "Quinn",
+            "Quinn Administration Building UMass Boston",
+            "Quinn Administration Building, University of Massachusetts Boston",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.3141970,
+            "lon": -71.0397057,
+        },
         "type": "building",
     },
     "healey library": {
@@ -44,6 +77,16 @@ CAMPUS_LOCATIONS = {
             "library",
             "the library",
         ],
+        "routing_candidates": [
+            "Healey Library",
+            "Joseph P. Healey Library",
+            "Healey Library UMass Boston",
+            "Healey Library, University of Massachusetts Boston",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.3135543,
+            "lon": -71.0394469,
+        },
         "type": "building",
     },
     "campus center": {
@@ -54,6 +97,15 @@ CAMPUS_LOCATIONS = {
             "cc",
             "student center",
         ],
+        "routing_candidates": [
+            "Campus Center",
+            "Campus Center UMass Boston",
+            "Campus Center, University of Massachusetts Boston",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.312818,
+            "lon": -71.037887,
+        },
         "type": "building",
     },
     "wheatley hall": {
@@ -63,6 +115,17 @@ CAMPUS_LOCATIONS = {
             "wheatley hall",
             "wheatley building",
         ],
+        "routing_candidates": [
+            "Wheatley Hall",
+            "Wheatley",
+            "Wheatley Building",
+            "Wheatley Hall UMass Boston",
+            "Wheatley Hall, University of Massachusetts Boston",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.31205,
+            "lon": -71.03823,
+        },
         "type": "building",
     },
     "integrated sciences complex": {
@@ -73,6 +136,16 @@ CAMPUS_LOCATIONS = {
             "science center",
             "science building",
         ],
+        "routing_candidates": [
+            "Integrated Sciences Complex",
+            "ISC",
+            "Integrated Sciences Complex UMass Boston",
+            "Integrated Sciences Complex, University of Massachusetts Boston",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.313862,
+            "lon": -71.040647,
+        },
         "type": "building",
     },
     "parking garage": {
@@ -84,6 +157,16 @@ CAMPUS_LOCATIONS = {
             "west garage",
             "campus garage",
         ],
+        "routing_candidates": [
+            "Parking Garage",
+            "West Garage",
+            "UMass Boston Parking Garage",
+            "Parking Garage UMass Boston",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.314943,
+            "lon": -71.041591,
+        },
         "type": "parking",
     },
     "bus stop": {
@@ -94,6 +177,13 @@ CAMPUS_LOCATIONS = {
             "mbta stop",
             "shuttle stop",
         ],
+        "routing_candidates": [
+            "Bus Stop",
+            "UMass Boston Bus Stop",
+            "Campus Center Bus Stop",
+            "MBTA UMass Boston",
+        ],
+        "fallback_coordinate": None,
         "type": "transit",
     },
     "harborwalk": {
@@ -104,6 +194,13 @@ CAMPUS_LOCATIONS = {
             "the harborwalk",
             "the harbor walk",
         ],
+        "routing_candidates": [
+            "HarborWalk",
+            "Boston HarborWalk",
+            "Harbor Walk UMass Boston",
+            "HarborWalk UMass Boston",
+        ],
+        "fallback_coordinate": None,
         "type": "landmark",
     },
     "food court": {
@@ -114,6 +211,12 @@ CAMPUS_LOCATIONS = {
             "dining area",
             "where to eat",
         ],
+        "routing_candidates": [
+            "Food Court",
+            "UMass Boston Food Court",
+            "Campus Center Food Court",
+        ],
+        "fallback_coordinate": None,
         "type": "service",
     },
 }
@@ -137,7 +240,18 @@ def unresolved_result(user_text: str) -> dict:
         "confidence": 0.0,
         "status": "unresolved",
         "type": None,
+        "routing_candidates": [],
+        "fallback_coordinate": None,
     }
+
+
+def location_routing_candidates(location: dict) -> list[str]:
+    candidates = location.get("routing_candidates") or [location["canonical_name"]]
+    deduped = []
+    for candidate in candidates:
+        if candidate and candidate not in deduped:
+            deduped.append(candidate)
+    return deduped
 
 
 def resolved_result(user_text: str, location: dict, matched_alias: str, confidence: float) -> dict:
@@ -148,6 +262,8 @@ def resolved_result(user_text: str, location: dict, matched_alias: str, confiden
         "confidence": confidence,
         "status": "resolved",
         "type": location["type"],
+        "routing_candidates": location_routing_candidates(location),
+        "fallback_coordinate": location.get("fallback_coordinate"),
     }
 
 

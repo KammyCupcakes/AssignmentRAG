@@ -1,8 +1,16 @@
-import chromadb
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import sys
+from navigation_flow import missing_or_unresolved_message
+from route_state import (
+    clear_last_route_context,
+    get_last_route_context,
+    handle_route_continuation_query,
+    handle_route_info_with_context,
+    start_pending_route,
+    try_complete_pending_route,
+)
 from route_parser import parse_route_query
 
 load_dotenv()
@@ -48,12 +56,19 @@ def log_unanswered_questions(question):
 
 # setting the environment
 
-DATA_PATH = r"data"
-CHROMA_PATH = r"chroma_db"
+DATA_PATH = os.path.join(BASE_DIR, "data")
+CHROMA_PATH = os.path.join(BASE_DIR, "chroma_db")
+collection = None
 
-chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 
-collection = chroma_client.get_or_create_collection(name="public_transportation")
+def get_collection():
+    global collection
+    if collection is None:
+        import chromadb
+
+        chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
+        collection = chroma_client.get_or_create_collection(name="public_transportation")
+    return collection
 
 messages_history = [
     {"role": "system", "content": "You are a helpful assistant for UMass Boston transportation"}
@@ -94,14 +109,35 @@ def format_route_request(route_info):
     )
 
 def handle_query(user_query):
+    user_query = (user_query or "").strip()
+
+    pending_route_response = try_complete_pending_route(user_query, get_route)
+    if pending_route_response is not None:
+        return pending_route_response
+
     if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
+        clear_last_route_context()
         return "Goodbye!"
 
-    route_info = parse_route_query(user_query)
-    if route_info["is_route"]:
-        return format_route_request(route_info)
+    if user_query.lower() in ["cancel", "nevermind", "never mind"] and get_last_route_context():
+        clear_last_route_context()
+        return "Okay, I cleared the last route context."
 
-    results = collection.query(
+    route_info = parse_route_query(user_query)
+    if route_info["is_route"] and not missing_or_unresolved_message(route_info):
+        return handle_route_info_with_context(route_info, get_route)
+
+    route_continuation_response = handle_route_continuation_query(user_query, get_route)
+    if route_continuation_response is not None:
+        return route_continuation_response
+
+    if route_info["is_route"]:
+        if missing_or_unresolved_message(route_info):
+            return start_pending_route(route_info)
+
+        return handle_route_info_with_context(route_info, get_route)
+
+    results = get_collection().query(
         query_texts=[user_query],
         n_results=3
     )

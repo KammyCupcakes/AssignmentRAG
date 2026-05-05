@@ -114,6 +114,100 @@ def detect_route_preference(query: str) -> str:
     return "default"
 
 
+def route_continuation_result(
+    query: str,
+    is_continuation: bool,
+    destination=None,
+    explicit_start=None,
+    use_last_destination_as_start=False,
+) -> dict:
+    return {
+        "is_continuation": is_continuation,
+        "explicit_start": explicit_start,
+        "destination": destination,
+        "use_last_destination_as_start": use_last_destination_as_start,
+        "algorithm": detect_algorithm(query),
+        "route_preference": detect_route_preference(query) if is_continuation else None,
+        "raw_query": query,
+    }
+
+
+def clean_continuation_location_text(text: str) -> str:
+    cleaned = clean_location_text(text)
+    cleaned = re.sub(
+        r"\s+(?:how\s+do\s+i\s+go|how\s+can\s+i\s+go|how\s+would\s+i\s+go)\b.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip(" \t\r\n.,!?;:")
+
+
+def parse_route_continuation_query(query: str) -> dict:
+    raw_query = query or ""
+    normalized_query = re.sub(r"\s+", " ", raw_query).strip()
+
+    if not normalized_query:
+        return route_continuation_result(raw_query, False)
+
+    explicit_destination_first_patterns = [
+        r"\bif\s+i\s+want\s+to\s+(?:go\s+to|get\s+to|walk\s+to|head\s+to)\s+(.+?)\s+after\s+reaching\s+(.+?)(?:\s+how\s+do\s+i\s+go)?$",
+        r"\bif\s+i\s+want\s+to\s+(?:go\s+to|get\s+to|walk\s+to|head\s+to)\s+(.+?)\s+after\s+(.+?)(?:\s+how\s+do\s+i\s+go)?$",
+    ]
+    for pattern in explicit_destination_first_patterns:
+        match = re.search(pattern, normalized_query, re.IGNORECASE)
+        if match:
+            destination = clean_continuation_location_text(match.group(1))
+            explicit_start = clean_continuation_location_text(match.group(2))
+            return route_continuation_result(
+                raw_query,
+                bool(destination and explicit_start),
+                destination=destination or None,
+                explicit_start=explicit_start or None,
+                use_last_destination_as_start=False,
+            )
+
+    explicit_start_first_patterns = [
+        r"\bafter\s+reaching\s+(.+?)\s+.*?(?:how\s+do\s+i\s+get\s+to|how\s+can\s+i\s+get\s+to|take\s+me\s+to|go\s+to|get\s+to|to)\s+(.+)$",
+        r"\bafter\s+(?!that\b)(.+?)\s+.*?(?:how\s+do\s+i\s+get\s+to|how\s+can\s+i\s+get\s+to|take\s+me\s+to|go\s+to|get\s+to|to)\s+(.+)$",
+    ]
+    for pattern in explicit_start_first_patterns:
+        match = re.search(pattern, normalized_query, re.IGNORECASE)
+        if match:
+            explicit_start = clean_continuation_location_text(match.group(1))
+            destination = clean_continuation_location_text(match.group(2))
+            return route_continuation_result(
+                raw_query,
+                bool(destination and explicit_start),
+                destination=destination or None,
+                explicit_start=explicit_start or None,
+                use_last_destination_as_start=False,
+            )
+
+    context_patterns = [
+        r"\bfrom\s+there\b.*?(?:how\s+do\s+i\s+get\s+to|how\s+can\s+i\s+get\s+to|take\s+me\s+to|go\s+to|get\s+to|to)\s+(.+)$",
+        r"\b(?:how\s+do\s+i\s+get\s+to|how\s+can\s+i\s+get\s+to|take\s+me\s+to|go\s+to|get\s+to)\s+(.+?)\s+from\s+there\b",
+        r"\b(?:then|next|after\s+that|now)\b.*?(?:how\s+do\s+i\s+get\s+to|how\s+can\s+i\s+get\s+to|take\s+me\s+to|go\s+to|get\s+to|to)\s+(.+)$",
+    ]
+    for pattern in context_patterns:
+        match = re.search(pattern, normalized_query, re.IGNORECASE)
+        if match:
+            destination = clean_continuation_location_text(match.group(1))
+            return route_continuation_result(
+                raw_query,
+                bool(destination),
+                destination=destination or None,
+                explicit_start=None,
+                use_last_destination_as_start=True,
+            )
+
+    return route_continuation_result(raw_query, False)
+
+
+def is_route_continuation_query(query: str) -> bool:
+    return parse_route_continuation_query(query)["is_continuation"]
+
+
 def route_result(
     query: str,
     is_route: bool,
