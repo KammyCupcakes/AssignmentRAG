@@ -65,16 +65,31 @@ client = OpenAI(
 )
 
 def format_route_request(route_info):
+    if route_info.get("clarification_reason") == "unresolved_start":
+        return (
+            "I can help with that route, but I could not confidently identify your "
+            "starting location. Can you rephrase it using a campus building name?"
+        )
+
+    if route_info.get("clarification_reason") == "unresolved_destination":
+        return (
+            "I can help with that route, but I could not confidently identify your "
+            "destination. Can you rephrase it using a campus building name?"
+        )
+
     if route_info["missing"] == "start":
         return "I can help with that route. Where are you starting from?"
 
     if route_info["missing"] == "destination":
         return "I can help with that route. Where are you trying to go?"
 
+    start = route_info["resolved_start"] or route_info["start"]
+    destination = route_info["resolved_destination"] or route_info["destination"]
+
     return (
         "Route request detected.\n"
-        f"Start: {route_info['start']}\n"
-        f"Destination: {route_info['destination']}\n"
+        f"Start: {start}\n"
+        f"Destination: {destination}\n"
         f"Algorithm: {route_info['algorithm']}"
     )
 
@@ -147,8 +162,12 @@ if __name__ == "__main__":
         route_info = parse_route_query(user_query)
 
         if route_info["is_route"]:
-            start = route_info["start"]
-            end = route_info["destination"]
+            if route_info.get("clarification_reason"):
+                print(f"Assistant: {format_route_request(route_info)}\n")
+                continue
+
+            start = route_info["resolved_start"] or route_info["start"]
+            end = route_info["resolved_destination"] or route_info["destination"]
             algorithm = route_info["algorithm"]
 
             if not start:

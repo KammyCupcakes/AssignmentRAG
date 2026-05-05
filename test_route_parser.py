@@ -1,6 +1,6 @@
 import unittest
 
-from route_parser import is_route_query, parse_route_query
+from route_parser import is_route_query, normalize_algorithm, parse_route_query
 
 
 class RouteParserTests(unittest.TestCase):
@@ -94,10 +94,62 @@ class RouteParserTests(unittest.TestCase):
     def test_algorithm_detection_defaults_to_astar_and_allows_dijkstra(self):
         astar = parse_route_query("route from UHall to McCormack with madeup")
         dijkstra = parse_route_query("route from UHall to McCormack using dijkstra")
+        invalid = parse_route_query("How do I get from University Hall to McCormack using banana?")
 
         self.assertEqual(astar["algorithm"], "astar")
         self.assertEqual(dijkstra["algorithm"], "dijkstra")
         self.assertEqual(dijkstra["destination"], "McCormack")
+        self.assertEqual(invalid["algorithm"], "astar")
+        self.assertEqual(invalid["destination"], "McCormack")
+
+    def test_normalize_algorithm_handles_supported_and_invalid_values(self):
+        cases = [
+            (None, "astar"),
+            ("", "astar"),
+            ("astar", "astar"),
+            ("A*", "astar"),
+            ("a star", "astar"),
+            ("dijkstra", "dijkstra"),
+            ("dijkstras", "dijkstra"),
+            ("dijkstra's", "dijkstra"),
+            ("dfs", "astar"),
+            ("banana", "astar"),
+            ("fastest", "astar"),
+        ]
+
+        for value, expected in cases:
+            with self.subTest(value=value):
+                self.assertEqual(normalize_algorithm(value), expected)
+
+    def test_parser_adds_resolved_location_fields(self):
+        parsed = parse_route_query("take me from u hall to quin building")
+
+        self.assertTrue(parsed["is_route"])
+        self.assertEqual(parsed["start"], "u hall")
+        self.assertEqual(parsed["destination"], "quin building")
+        self.assertEqual(parsed["resolved_start"], "University Hall")
+        self.assertEqual(parsed["resolved_destination"], "Quinn Administration Building")
+        self.assertEqual(parsed["start_resolution"]["status"], "resolved")
+        self.assertEqual(parsed["destination_resolution"]["status"], "resolved")
+        self.assertFalse(parsed["needs_clarification"])
+
+    def test_parser_marks_unresolved_locations_for_clarification(self):
+        parsed = parse_route_query("how do i get from fake place to campus center")
+
+        self.assertTrue(parsed["is_route"])
+        self.assertEqual(parsed["start"], "fake place")
+        self.assertEqual(parsed["destination"], "campus center")
+        self.assertIsNone(parsed["resolved_start"])
+        self.assertEqual(parsed["resolved_destination"], "Campus Center")
+        self.assertTrue(parsed["needs_clarification"])
+        self.assertEqual(parsed["missing"], "start")
+        self.assertEqual(parsed["clarification_reason"], "unresolved_start")
+
+    def test_parser_resolves_common_aliases(self):
+        parsed = parse_route_query("directions from the garage to the library")
+
+        self.assertEqual(parsed["resolved_start"], "Parking Garage")
+        self.assertEqual(parsed["resolved_destination"], "Healey Library")
 
     def test_non_route_queries_do_not_trigger_route_mode(self):
         cases = [
