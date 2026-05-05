@@ -199,6 +199,14 @@ class NavigationFlowTests(unittest.TestCase):
         get_route.assert_not_called()
         self.assertIn("could not confidently identify your starting location", response)
 
+    def test_unresolved_destination_does_not_call_beaconnav(self):
+        get_route = Mock()
+
+        response = handle_route_query("How do I get from Campus Center to fake place?", get_route)
+
+        get_route.assert_not_called()
+        self.assertIn("could not confidently identify your destination", response)
+
     def test_same_start_and_destination_does_not_call_beaconnav(self):
         get_route = Mock()
 
@@ -224,6 +232,32 @@ class NavigationFlowTests(unittest.TestCase):
 
         self.assertLessEqual(get_route.call_count, MAX_ROUTE_ATTEMPTS)
         self.assertIn("could not generate a route between University Hall and McCormack Hall", response)
+
+    def test_beaconnav_success_without_real_path_returns_specific_failure(self):
+        get_route = Mock(
+            return_value={
+                "success": True,
+                "distance_miles": 0.11,
+                "walk_time_minutes": 2.2,
+                "path": ["only-one-node"],
+            }
+        )
+
+        response = handle_route_query("How do I get from University Hall to McCormack?", get_route)
+
+        self.assertIn("could not build a walkable path between University Hall and McCormack Hall", response)
+
+    def test_beaconnav_no_nearby_paths_returns_specific_failure(self):
+        get_route = Mock(
+            return_value={
+                "success": False,
+                "error": "No roads near your location were found",
+            }
+        )
+
+        response = handle_route_query("How do I get from University Hall to McCormack?", get_route)
+
+        self.assertIn("could not find walkable campus paths near one of those locations", response)
 
     def test_harborwalk_false_positive_does_not_call_beaconnav(self):
         get_route = Mock()

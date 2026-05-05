@@ -29,3 +29,11 @@ Where is U-Access?
 where is the clark lot?
 Is there a food court on campus?
 if i want to go to isc after reaching quinn how do i go
+use djikstra
+im at harbor point, take me to uni hall
+im at the dorms
+im at the dorm, take me to uhall
+uhall to dorms
+uhall to food court
+uhall to cc
+uhall to campus center

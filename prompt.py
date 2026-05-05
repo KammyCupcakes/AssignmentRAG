@@ -195,45 +195,6 @@ if __name__ == "__main__":
         if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
             break
 
-        route_info = parse_route_query(user_query)
-
-        if route_info["is_route"]:
-            if route_info.get("clarification_reason"):
-                print(f"Assistant: {format_route_request(route_info)}\n")
-                continue
-
-            start = route_info["resolved_start"] or route_info["start"]
-            end = route_info["resolved_destination"] or route_info["destination"]
-            algorithm = route_info["algorithm"]
-
-            if not start:
-                start = input("Starting location: ")
-
-            if not end:
-                end = input("Ending location: ")
-
-            try:
-                route = get_route(start, end, algorithm, show_map=True)
-
-                if not route["success"]:
-                    print(f"Assistant: {route['error']}\n")
-                    continue
-
-                print(
-                    f"Assistant: Here is the walking route information:\n"
-                    f"Start: {route['start']}\n"
-                    f"End: {route['end']}\n"
-                    f"Algorithm: {route['algorithm']}\n"
-                    f"Estimated walk time: {route['walk_time_minutes']:.1f} minutes\n"
-                    f"Walking distance: {route['distance_miles']:.2f} miles\n"
-                    f"Expanded nodes: {route['expanded_nodes']}\n"
-                )
-
-            except Exception as e:
-                print(f"Assistant: I could not calculate the walking route right now. Error: {e}\n")
-
-            continue
-
         answer = handle_query(user_query)
         print(f"Assistant: {answer}\n")
 
