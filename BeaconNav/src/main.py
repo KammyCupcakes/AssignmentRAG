@@ -40,16 +40,18 @@ def get_route(start, end, algorithm="astar", show_map=True, save_map_file=None):
     miles = walking_distance * 0.000621371
 
     if show_map or save_map_file:
-        plotter.plot_route(
+        image_data = plotter.plot_route(
             path,
             graph,
             text=f"- Estimated walk time: {estimate_walk_time:.1f} minutes\n\n"
             f"- Walking distance: {miles:.2f} miles \n\n"
             f"- Expanded nodes: {explored_nodes}",
             crop_to_route=True,
-            show=show_map,
             save_file=save_map_file,
+            return_image=True,
         )
+    else:
+        image_data = None
 
     return {
         "success": True,
@@ -59,7 +61,8 @@ def get_route(start, end, algorithm="astar", show_map=True, save_map_file=None):
         "walk_time_minutes": estimate_walk_time,
         "distance_miles": miles,
         "expanded_nodes": explored_nodes,
-        "path": path
+        "path": path,
+        "image": image_data,
     }
 
 if __name__ == "__main__":

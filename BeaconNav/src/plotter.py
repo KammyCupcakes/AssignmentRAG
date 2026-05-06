@@ -1,8 +1,12 @@
 import pickle
+import matplotlib
+matplotlib.use('Agg')  # Set non-interactive backend BEFORE importing pyplot
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
 import numpy as np
+import base64
+from io import BytesIO
 
 
 def __zoom_level(extent: np.ndarray) -> int:
@@ -20,7 +24,7 @@ def __zoom_level(extent: np.ndarray) -> int:
         return 16
 
 
-def plot_points(ways: [np.ndarray], directions: str, crop_to_route=True) -> None:
+def plot_points(ways: list[np.ndarray], directions: str, crop_to_route=True) -> None:
     """
     plots a line given a list of points on openstreetmap
     :param ways: list of points to plot
@@ -69,28 +73,41 @@ def plot_points(ways: [np.ndarray], directions: str, crop_to_route=True) -> None
     ax.axis('off')
 
 
-def plot_route(path: [], graph, text = "", crop_to_route=True, show=True, save_file=None) -> None:
+def plot_route(path: list, graph, text = "", crop_to_route=True, show=True, save_file=None, return_image=True):
     """
     plots a route given by a list of nodes in the graph onto OpenStreetMap
     :param path: the list of nodes in the graph onto which to plot
     :param graph: the networkx graph
     :param text: text displayed next to the map
     :param crop_to_route: crops the map to only show the route if false it shows the entire UMass Boston campus
-    :param show: the plot window
+    :param show: deprecated - ignored (always runs in headless mode)
     :param save_file: save the figure to a file with the name given by save_file
-    :return:
+    :param return_image: if True, returns image as base64-encoded PNG bytes
+    :return: base64-encoded image string if return_image=True, otherwise None
     """
     points = []
     for i in range(1, len(path)):
         points.append(np.array(graph.get_edge_data(path[i - 1], path[i])["points"]))
     plot_points(points, text, crop_to_route=crop_to_route)
+    
+    image_data = None
+    
+    if return_image:
+        # Capture figure as base64-encoded PNG
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', bbox_inches="tight", pad_inches=0, dpi=150)
+        buffer.seek(0)
+        image_bytes = buffer.read()
+        image_data = base64.b64encode(image_bytes).decode('utf-8')
+        buffer.close()
+    
     if save_file is not None and save_file != "":
         plt.savefig(save_file, bbox_inches="tight", pad_inches=0, dpi=450)
-    if show:
-        plt.show()
-    else:
-        # Ensure headless render requests do not leave GUI-managed figures around.
-        plt.close("all")
+    
+    # Always close the figure to prevent GUI operations and memory leaks
+    plt.close('all')
+    
+    return image_data
 
 
 if __name__ == "__main__":
