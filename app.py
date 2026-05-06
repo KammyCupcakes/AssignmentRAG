@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template_string, session, jsonify
 import os
 import traceback
-from prompt import handle_query_web, ONBOARDING_MESSAGE
+from prompt import handle_query_web, ONBOARDING_MESSAGE, SUGGESTED_QUESTIONS
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # For session management
@@ -12,7 +12,7 @@ with open("template.html", "r", encoding="utf-8") as file:
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE, onboard_message=ONBOARDING_MESSAGE)
+    return render_template_string(HTML_TEMPLATE, onboard_message=ONBOARDING_MESSAGE, suggested_questions=SUGGESTED_QUESTIONS)
 
 @app.route('/chat', methods=['POST'])
 def chat():

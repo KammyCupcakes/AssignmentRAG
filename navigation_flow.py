@@ -1,7 +1,11 @@
+from contextvars import ContextVar
 from numbers import Real
 
 from route_parser import normalize_algorithm, parse_route_query
 
+
+# Context variable for storing route images (request-scoped, thread-safe)
+_route_image_context: ContextVar[str | None] = ContextVar('route_image', default=None)
 
 MAX_ROUTE_ATTEMPTS = 6
 
@@ -347,6 +351,10 @@ def handle_route_query(user_query: str, get_route) -> str | None:
 
 
 def handle_route_info(route_info: dict, get_route) -> str:
+    """Process route info and return response text. Captures image in context variable if generated."""
+    # Reset context at start of new route handling
+    _route_image_context.set(None)
+    
     validation_message, start, destination = validate_route_request(route_info)
     if validation_message:
         return validation_message
@@ -367,7 +375,7 @@ def handle_route_info(route_info: dict, get_route) -> str:
                 route_start,
                 route_destination,
                 algorithm=algorithm,
-                show_map=False,
+                show_map=True,
             )
         except Exception:
             continue
@@ -377,6 +385,9 @@ def handle_route_info(route_info: dict, get_route) -> str:
             failure_message = validation_failure_message
 
         if is_valid and is_usable_route_result(route_result):
+            # Capture image in context if present
+            if route_result.get("image"):
+                _route_image_context.set(route_result["image"])
             return format_route_response(route_result, start, destination, algorithm)
 
     if failure_message:

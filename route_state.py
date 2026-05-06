@@ -125,6 +125,7 @@ def set_last_route_context(route_info: dict, now: float | None = None) -> None:
 
 
 def _is_successful_route_response(response: str | None) -> bool:
+    """Check if response indicates successful route generation."""
     return bool(
         isinstance(response, str)
         and response.startswith("Route found:")
@@ -133,10 +134,11 @@ def _is_successful_route_response(response: str | None) -> bool:
 
 
 def handle_route_info_with_context(route_info: dict, get_route, now: float | None = None) -> str:
-    response = handle_route_info(route_info, get_route)
-    if _is_successful_route_response(response):
+    """Handle route info with context tracking. Returns response text."""
+    route_response = handle_route_info(route_info, get_route)
+    if _is_successful_route_response(route_response):
         set_last_route_context(route_info, now=now)
-    return response
+    return route_response
 
 
 def _is_cancel_message(user_query: str) -> bool:

@@ -22,6 +22,10 @@
         button { padding: 10px; background-color: #003366; color: white; border: none; cursor: pointer; }
         .options { margin: 10px 0; color: #003366; font-size: 0.95rem; }
         .route-image { max-width: 100%; border-radius: 8px; margin-top: 8px; border: 1px solid #d0d8e0; }
+        .suggested-questions { margin: 15px 0; color: #003366; }
+        .suggested-questions label { display: block; font-weight: bold; margin-bottom: 8px; }
+        .suggested-btn { display: inline-block; background-color: #e0e0e0; color: #003366; padding: 8px 12px; margin: 4px 4px 4px 0; border-radius: 6px; cursor: pointer; font-size: 0.9rem; border: 1px solid #003366; transition: background-color 0.2s; }
+        .suggested-btn:hover { background-color: #003366; color: white; }
     </style>
 </head>
 <body>
@@ -40,15 +44,63 @@
     </div>
     <script>
         const onboardingMessage = "{{ onboard_message }}";
-        document.getElementById('chat').innerHTML += `<p><strong>Assistant:</strong> ${onboardingMessage}</p>`;
+        const suggestedQuestions = {{ suggested_questions|tojson if suggested_questions else '[]' }};
         const chat = document.getElementById('chat');
         const form = document.getElementById('chat-form');
         const input = document.getElementById('user-input');
         const showRouteMap = document.getElementById('show-route-map');
+        
+        // Display onboarding message in chat
+        const onboardDiv = document.createElement('div');
+        onboardDiv.className = 'message assistant';
+        onboardDiv.textContent = onboardingMessage;
+        chat.appendChild(onboardDiv);
+        
+        // Display suggested questions in chat window
+        if (suggestedQuestions.length > 0) {
+            const suggestDiv = document.createElement('div');
+            suggestDiv.style.marginTop = '10px';
+            suggestDiv.style.marginBottom = '10px';
+            const label = document.createElement('p');
+            label.style.fontWeight = 'bold';
+            label.style.marginBottom = '8px';
+            label.style.color = '#003366';
+            label.textContent = 'Suggested questions:';
+            suggestDiv.appendChild(label);
+            
+            suggestedQuestions.forEach(question => {
+                const btn = document.createElement('button');
+                btn.className = 'suggested-btn';
+                btn.textContent = question;
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    input.value = question;
+                    form.dispatchEvent(new Event('submit'));
+                });
+                suggestDiv.appendChild(btn);
+            });
+            
+            chat.appendChild(suggestDiv);
+        }
+        
+        chat.scrollTop = chat.scrollHeight;
+        
         function formatLinks(text) {
             if (!text) return '';
-            const urlRegex = /(https?:\/\/[^\s<>"']*[^\s<>"'.,!?;:])/g;
-            return text.replace(urlRegex, (url) => `<a href="${url}" target="_blank" style="color: #66ccff;">${url}</a>`);
+            // Convert markdown-style links [label](url) into anchors
+            text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, url) => {
+                return `<a href="${url}" target="_blank" style="color: #66ccff;">${label}</a>`;
+            });
+
+            // Replace bare URLs only outside of existing HTML tags to avoid corrupting anchors
+            const urlRegex = /(https?:\/\/[^\s<>\"']*[^\s<>\"'.,!?;:])/g;
+            const parts = text.split(/(<[^>]+>)/g);
+            for (let i = 0; i < parts.length; i++) {
+                if (!parts[i].startsWith('<')) {
+                    parts[i] = parts[i].replace(urlRegex, (url) => `<a href="${url}" target="_blank" style="color: #66ccff;">${url}</a>`);
+                }
+            }
+            return parts.join('');
         }
 
         function appendAssistantMessage(responseText, routeMapUrl, imageBase64) {
