@@ -44,7 +44,7 @@
     </div>
     <script>
         const onboardingMessage = "{{ onboard_message }}";
-        const suggestedQuestions = {{ suggested_questions|tojson if suggested_questions else '[]' }};
+        const suggestedQuestions = JSON.parse('{{ (suggested_questions or []) | tojson | safe }}');
         const chat = document.getElementById('chat');
         const form = document.getElementById('chat-form');
         const input = document.getElementById('user-input');
