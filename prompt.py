@@ -291,7 +291,7 @@ def format_tool_results_for_prompt(tool_results) -> str:
         return "\n\n".join(prompt_blocks)
 
 def handle_query(user_query):
-    return _handle_query_core(user_query, get_route)
+    return _handle_query_core(user_query)
 
 
 def handle_query_web(user_query, show_route_map=False):
