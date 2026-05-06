@@ -206,7 +206,7 @@ def strip_unsupported_citation_markers(answer: str) -> str:
     if not isinstance(answer, str):
         return answer
 
-    return re.sub(r"\s*【[^】]*†source】", "", answer)
+    return re.sub(r"\s*\u3010[^\u3011]*\u2020source\u3011", "", answer)
 
 
 def append_sources_section(answer: str, sources: list[dict]) -> str:
@@ -272,22 +272,26 @@ def _handle_deterministic_route(user_query):
     pending_route_response = try_complete_pending_route(user_query, get_route)
     while (1):
         if pending_route_response is not None:
-            print(f"Pending route response: {pending_route_response}")
+            if DEBUG:
+                print(f"Pending route response: {pending_route_response}")
             return pending_route_response
 
         route_info = parse_route_query(user_query)
         clarification_message = missing_or_unresolved_message(route_info)
         if route_info["is_route"] and not clarification_message:
-            print(f"Parsed route info: {route_info}")
+            if DEBUG:
+                print(f"Parsed route info: {route_info}")
             return handle_route_info_with_context(route_info, get_route)
 
         continuation_response = handle_route_continuation_query(user_query, get_route)
         if continuation_response is not None:
-            print(f"Route continuation response: {continuation_response}")
+            if DEBUG:
+                print(f"Route continuation response: {continuation_response}")
             return continuation_response
 
         if route_info["is_route"]:
-            print(f"Parsed route info: {route_info}")
+            if DEBUG:
+                print(f"Parsed route info: {route_info}")
             return start_pending_route(route_info)
         
         return None  # Not a route query
@@ -365,7 +369,6 @@ def _handle_query_core(user_query):
         final_response = getattr(final_message, "content", "")
         final_response = strip_unsupported_citation_markers(final_response)
         final_response = append_sources_section(final_response, collect_search_sources(tool_results))
-        final_response = final_message.content or ""
 
         # If response is blank, provide a helpful fallback
         if not final_response.strip():
