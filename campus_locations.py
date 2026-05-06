@@ -236,6 +236,68 @@ CAMPUS_LOCATIONS = {
         "fallback_coordinate": None,
         "type": "service",
     },
+    "Dorms": {
+        "canonical_name": "Dormitory",
+        "aliases": [
+            "dorms",
+            "the dorms",
+            "west hall",
+            "west hall dorm",
+            "east hall",
+            "east hall dorms",
+            "east",
+            "west",
+        ],
+        "routing_candidates": [
+            "Dorms",
+            "East Hall",
+            "West Hall",
+            "Dormitories",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.31653022178587,
+            "lon":  -71.03952465923257,
+        },
+        "type": "building",
+    },
+    "Bayside Lot": {
+        "canonical_name": "Bayside Parking Lot",
+        "aliases": [
+            "Bayside",
+            "Bayside Parking",
+            "Bayside Lot",
+        ],
+        "routing_candidates": [
+            "Bayside",
+            "Bayside Parking",
+            "Bayside Lot"
+            "Baysidelot",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.31969326861608,
+            "lon": -71.0463959033541
+,
+        },
+        "type": "parking",
+    },
+    "Quad Lot": {
+        "canonical_name": "Quad Lot",
+        "aliases": [
+            "Quad Lot",
+            "Quad",
+            "Quadlot"
+        ],
+        "routing_candidates": [
+            "Quad Lot",
+            "Quad",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.3143799330091,
+            "lon": -71.0376504580029
+,
+        },
+        "type": "parking",
+    },
 }
 
 FUZZY_THRESHOLD = 0.78
