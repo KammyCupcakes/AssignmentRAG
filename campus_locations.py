@@ -301,6 +301,30 @@ CAMPUS_LOCATIONS = {
         },
         "type": "parking",
     },
+    "JFK/UMASS": {
+        "canonical_name": "JFK/UMASS",
+        "aliases": [
+            "jfkumass",
+            "JFK/Umass",
+            "jfk/umass",
+            "jfk",
+            "redline",
+            "subway",
+        ],
+        "routing_candidates": [
+            "jfkumass",
+            "JFK/Umass",
+            "jfk/umass",
+            "jfk",
+            "redline",
+            "subway",
+        ],
+        "fallback_coordinate": {
+            "lat": 42.32036455835149, 
+            "lon":  -71.05184278361274,
+        },
+        "type": "transit",
+    },
 }
 
 FUZZY_THRESHOLD = 0.78
