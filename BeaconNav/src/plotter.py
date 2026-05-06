@@ -88,6 +88,9 @@ def plot_route(path: [], graph, text = "", crop_to_route=True, show=True, save_f
         plt.savefig(save_file, bbox_inches="tight", pad_inches=0, dpi=450)
     if show:
         plt.show()
+    else:
+        # Ensure headless render requests do not leave GUI-managed figures around.
+        plt.close("all")
 
 
 if __name__ == "__main__":

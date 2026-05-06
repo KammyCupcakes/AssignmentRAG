@@ -113,12 +113,7 @@ def is_usable_route_result(route_result) -> bool:
     if route_result.get("success") is False:
         return False
 
-    for keys in (ROUTE_KEYS, DISTANCE_KEYS, TIME_KEYS):
-        _, value = first_useful_field(route_result, keys)
-        if has_useful_value(value):
-            return True
-
-    return False
+    return route_result_has_path(route_result)
 
 
 def format_distance(value, key: str) -> str:
@@ -143,8 +138,75 @@ def route_result_has_path(route_result: dict | None) -> bool:
     if not isinstance(route_result, dict):
         return False
 
-    _, value = first_useful_field(route_result, ROUTE_KEYS)
-    return has_useful_value(value)
+    for key in ROUTE_KEYS:
+        value = route_result.get(key)
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            return True
+        if isinstance(value, set) and len(value) >= 2:
+            return True
+
+    return False
+
+
+def validate_route_request(route_info: dict) -> tuple[str | None, str | None, str | None]:
+    clarification = missing_or_unresolved_message(route_info)
+    if clarification:
+        return clarification, None, None
+
+    start = route_info.get("resolved_start") or route_info.get("start")
+    destination = route_info.get("resolved_destination") or route_info.get("destination")
+
+    if not start:
+        return "I can help with that route. Where are you starting from?", None, None
+
+    if not destination:
+        return "I can help with that route. Where are you trying to go?", None, None
+
+    if start.strip().lower() == destination.strip().lower():
+        return (
+            f"Your start and destination look the same: {start}. "
+            "Please provide two different campus locations.",
+            None,
+            None,
+        )
+
+    return None, start, destination
+
+
+def route_failure_message(start: str, destination: str, detail: str | None = None) -> str:
+    if detail == "no_nearby_paths":
+        return (
+            "I found your start and destination, but I could not find walkable campus paths "
+            f"near one of those locations ({start} or {destination}). "
+            "Please try a nearby campus building name."
+        )
+
+    if detail == "no_path":
+        return (
+            f"I found both locations, but I could not build a walkable path between {start} and {destination}. "
+            "Please try a different nearby campus landmark."
+        )
+
+    return (
+        "I recognized the route request, but I could not generate a route "
+        f"between {start} and {destination} right now."
+    )
+
+
+def validate_route_result(route_result, start: str, destination: str) -> tuple[bool, str | None]:
+    if not isinstance(route_result, dict) or not route_result:
+        return False, None
+
+    if route_result.get("success") is False:
+        error_text = str(route_result.get("error") or "").strip().lower()
+        if "no roads near your location" in error_text:
+            return False, route_failure_message(start, destination, detail="no_nearby_paths")
+        return False, None
+
+    if not route_result_has_path(route_result):
+        return False, route_failure_message(start, destination, detail="no_path")
+
+    return True, None
 
 
 def generate_basic_route_guidance(
@@ -245,6 +307,9 @@ def format_route_response(route_result: dict, start: str, destination: str, algo
 
     if route_result_has_path(route_result):
         lines.append("")
+        lines.append(
+            "Note: This is campus walking guidance based on available map path data, not indoor turn-by-turn directions."
+        )
 
     lines.append("")
     lines.append("Status: Route generated successfully.")
@@ -282,24 +347,9 @@ def handle_route_query(user_query: str, get_route) -> str | None:
 
 
 def handle_route_info(route_info: dict, get_route) -> str:
-    clarification = missing_or_unresolved_message(route_info)
-    if clarification:
-        return clarification
-
-    start = route_info.get("resolved_start") or route_info.get("start")
-    destination = route_info.get("resolved_destination") or route_info.get("destination")
-
-    if not start:
-        return "I can help with that route. Where are you starting from?"
-
-    if not destination:
-        return "I can help with that route. Where are you trying to go?"
-
-    if start.strip().lower() == destination.strip().lower():
-        return (
-            f"Your start and destination look the same: {start}. "
-            "Please provide two different campus locations."
-        )
+    validation_message, start, destination = validate_route_request(route_info)
+    if validation_message:
+        return validation_message
 
     algorithm = normalize_algorithm(route_info.get("algorithm"))
 
@@ -310,6 +360,7 @@ def handle_route_info(route_info: dict, get_route) -> str:
     if not route_attempts:
         route_attempts = [(start, destination)]
 
+    failure_message = None
     for route_start, route_destination in route_attempts:
         try:
             route_result = get_route(
@@ -321,10 +372,14 @@ def handle_route_info(route_info: dict, get_route) -> str:
         except Exception:
             continue
 
-        if is_usable_route_result(route_result):
+        is_valid, validation_failure_message = validate_route_result(route_result, start, destination)
+        if validation_failure_message:
+            failure_message = validation_failure_message
+
+        if is_valid and is_usable_route_result(route_result):
             return format_route_response(route_result, start, destination, algorithm)
 
-    return (
-        "I recognized the route request, but I could not generate a route "
-        f"between {start} and {destination} right now."
-    )
+    if failure_message:
+        return failure_message
+
+    return route_failure_message(start, destination)

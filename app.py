@@ -1,6 +1,6 @@
 from flask import Flask, request, render_template_string, session
 import os
-from prompt import handle_query, ONBOARDING_MESSAGE
+from prompt import handle_query_web, ONBOARDING_MESSAGE
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # For session management
@@ -17,8 +17,9 @@ def index():
 def chat():
     data = request.get_json()
     query = data.get('query', '')
-    response = handle_query(query)
-    return {'response': response}
+    show_route_map = bool(data.get('show_route_map', False))
+    result = handle_query_web(query, show_route_map=show_route_map)
+    return result
 
 if __name__ == '__main__':
     app.run(debug=True)

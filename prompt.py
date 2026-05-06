@@ -5,6 +5,7 @@ from tools import TOOLS, execute_tool_call
 import os
 from typing import Any
 import sys
+import uuid
 from navigation_flow import missing_or_unresolved_message
 from route_state import (
     clear_last_route_context,
@@ -148,12 +149,16 @@ def format_route_request(route_info):
         f"Algorithm: {route_info['algorithm']}"
     )
 
-def handle_query(user_query):
+
+def _handle_query_core(user_query, route_getter):
     user_query = (user_query or "").strip()
 
-    # pending_route_response = try_complete_pending_route(user_query, get_route)
-    # if pending_route_response is not None:
-    #     return pending_route_response
+    # Add the user's message to the conversation history
+    messages_history.append({"role": "user", "content": user_query})
+
+    pending_route_response = try_complete_pending_route(user_query, route_getter)
+    if pending_route_response is not None:
+        return pending_route_response
 
     # if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
     #     clear_last_route_context()
@@ -192,9 +197,6 @@ def handle_query(user_query):
     #     f"Context:\n{context}"
     # )
     # messages_history[0]["content"] = current_system_prompt
-
-    # Add the user's message to the conversation history
-    messages_history.append({"role": "user", "content": user_query})
 
     try:
         response = client.chat.completions.create(
@@ -293,10 +295,49 @@ def format_tool_results_for_prompt(tool_results) -> str:
                 continue
             prompt_blocks.append(f"Tool: {name}\nResult: {result}")
 
-        combined_results = "\n\n".join(prompt_blocks).strip()
-        if len(combined_results) <= TOOLS_RESPONSE_MAX_TOKENS:
-            return combined_results
-        return combined_results[:TOOLS_RESPONSE_MAX_TOKENS] + "\n[Truncated additional results]"
+def handle_query(user_query):
+    return _handle_query_core(user_query, get_route)
+
+
+def handle_query_web(user_query, show_route_map=False):
+    if not show_route_map:
+        return {"response": handle_query(user_query), "route_map_url": None}
+
+    static_routes_dir = os.path.join(BASE_DIR, "static", "routes")
+    os.makedirs(static_routes_dir, exist_ok=True)
+    map_result = {"route_map_url": None}
+
+    def web_route_getter(start, end, algorithm="astar", show_map=False):
+        import matplotlib.pyplot as plt
+
+        # Web requests run in worker threads; use a non-GUI backend for safe image rendering.
+        plt.switch_backend("Agg")
+
+        map_filename = f"route_{uuid.uuid4().hex}.png"
+        map_file_path = os.path.join(static_routes_dir, map_filename)
+        route_result = get_route(
+            start,
+            end,
+            algorithm=algorithm,
+            show_map=False,
+            save_map_file=map_file_path,
+        )
+        if (
+            isinstance(route_result, dict)
+            and route_result.get("success")
+            and os.path.exists(map_file_path)
+        ):
+            map_result["route_map_url"] = f"/static/routes/{map_filename}"
+        return route_result
+
+    response = _handle_query_core(user_query, web_route_getter)
+    if not (isinstance(response, str) and response.startswith("Route found:")):
+        map_result["route_map_url"] = None
+
+    return {
+        "response": response,
+        "route_map_url": map_result["route_map_url"],
+    }
 
 def process_query(user_query: str) -> str:
         route_info = parse_route_query(user_query)
@@ -347,7 +388,6 @@ if __name__ == "__main__":
         if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
             break
 
-        answer = process_query(user_query)
-
+        answer = handle_query(user_query)
         print(f"Assistant: {answer}\n")
 
