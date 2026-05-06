@@ -7,7 +7,7 @@ import os
 from typing import Any
 import sys
 import uuid
-from navigation_flow import missing_or_unresolved_message
+from navigation_flow import missing_or_unresolved_message, _route_image_context
 from route_state import (
     clear_last_route_context,
     get_last_route_context,
@@ -120,8 +120,7 @@ messages_history = [
     {"role": "system", "content": SYSTEM_PROMPT}
 ]
 
-# Global to store captured route image across tool execution
-_captured_route_image = None
+# Removed global _captured_route_image - now passed through return values
 
 client = None
 
@@ -243,46 +242,40 @@ def collect_search_sources(tool_results: list[dict]) -> list[dict]:
 
 
 def _handle_deterministic_route(user_query):
-    final_response = None
+    """Handle deterministic route queries. Returns response text or None. Image captured in context variable."""
     pending_route_response = try_complete_pending_route(user_query, get_route)
     while (1):
         if pending_route_response is not None:
             print(f"Pending route response: {pending_route_response}")
-            final_response = pending_route_response
-            break
+            return pending_route_response
 
         route_info = parse_route_query(user_query)
         clarification_message = missing_or_unresolved_message(route_info)
         if route_info["is_route"] and not clarification_message:
             print(f"Parsed route info: {route_info}")
-            final_response = handle_route_info_with_context(route_info, get_route)
-            break
+            return handle_route_info_with_context(route_info, get_route)
 
         continuation_response = handle_route_continuation_query(user_query, get_route)
         if continuation_response is not None:
             print(f"Route continuation response: {continuation_response}")
-            final_response = continuation_response
-            break
+            return continuation_response
 
         if route_info["is_route"]:
             print(f"Parsed route info: {route_info}")
-            final_response = start_pending_route(route_info)
-            break
-        break  # Not a route query, exit the loop
-
-    global _captured_route_image
-    if final_response and final_response.startswith("Route found:"):
-        _captured_route_image = final_response
-
-    return final_response
+            return start_pending_route(route_info)
+        
+        return None  # Not a route query
 
 
 def _handle_query_core(user_query):
+    """Core query handler. Returns dict with 'response' and 'image' keys."""
     user_query = (user_query or "").strip()
 
-    deterministic_route_response = _handle_deterministic_route(user_query)
-    if deterministic_route_response is not None:
-        return deterministic_route_response
+    deterministic_route_result = _handle_deterministic_route(user_query)
+    if deterministic_route_result is not None:
+        # Route was handled; image (if any) is captured in context variable
+        route_image = _route_image_context.get()
+        return {"response": deterministic_route_result, "image": route_image}
 
     # Add the user's message to the conversation history for the RAG path.
     messages_history.append({"role": "user", "content": user_query})
@@ -299,7 +292,8 @@ def _handle_query_core(user_query):
         if not tool_calls and getattr(answer, "content", None):
             final_response = strip_unsupported_citation_markers(answer.content)
             messages_history.append({"role": "assistant", "content": final_response})
-            return final_response
+            # No image for non-route LLM responses
+            return {"response": final_response, "image": None}
 
         tool_results: list[dict[str, Any]] = []
         for tool_call in tool_calls:
@@ -337,7 +331,7 @@ def _handle_query_core(user_query):
                 )
 
         formatted_results = format_tool_results_for_prompt(tool_results)
-        generated_reprompt = TOOL_REPROMPT_TEMPLATE.format(tool_results=formatted_results)
+        generated_reprompt = TOOL_REPROMPT_TEMPLATE.format(tool_results=formatted_results["text"])
 
         messages_history.append({"role": "system", "content": generated_reprompt})
         response = get_openai_response(messages_history)
@@ -357,13 +351,20 @@ def _handle_query_core(user_query):
         # Add the assistant's response to the conversation history for future context
         messages_history.append({"role": "assistant", "content": final_response})
 
-        return final_response
+        return {
+            "response": final_response,
+            "image": formatted_results.get("image")
+        }
 
     except Exception as e:
-        return f"I hit an error: {e} at line {sys.exc_info()[-1].tb_lineno}"
+        error_msg = f"I hit an error: {e} at line {sys.exc_info()[-1].tb_lineno}"
+        return {"response": error_msg, "image": None}
 
-def format_tool_results_for_prompt(tool_results) -> str:
+def format_tool_results_for_prompt(tool_results) -> dict:
+        """Format tool results for LLM. Returns dict with 'text' (formatted results) and 'image' (captured route image or None)."""
         prompt_blocks: list[str] = []
+        captured_image = None
+        
         for tool_result in tool_results:
             name = tool_result["name"]
             result = tool_result["result"]
@@ -373,9 +374,7 @@ def format_tool_results_for_prompt(tool_results) -> str:
                 if result.get("image"):
                     if DEBUG:
                         print(f"[format_tool_results_for_prompt] Found image in walking directions result, length: {len(result.get('image'))}")
-                    # Store image in a global that handle_query_web can access
-                    global _captured_route_image
-                    _captured_route_image = result.get("image")
+                    captured_image = result.get("image")
                 
                 lines = [
                     f"Tool: {name}",
@@ -426,47 +425,35 @@ def format_tool_results_for_prompt(tool_results) -> str:
                 prompt_blocks.append("\n".join(lines))
                 continue
             prompt_blocks.append(f"Tool: {name}\nResult: {result}")
-        return "\n\n".join(prompt_blocks)
+        
+        return {
+            "text": "\n\n".join(prompt_blocks),
+            "image": captured_image
+        }
 
 def handle_query(user_query):
-    return _handle_query_core(user_query)
+    """CLI interface - returns just the response text."""
+    result = _handle_query_core(user_query)
+    return result["response"]
 
 
 def handle_query_web(user_query, show_route_map=False):
-    global _captured_route_image
-    _captured_route_image = None  # Reset for this request
-    
+    """Web interface - returns response, route map URL, and base64 image if available."""
     get_client()  # Ensure client is initialized before handling the query
 
-    if not show_route_map:
-        return {"response": handle_query(user_query), "route_map_url": None, "image_base64": None}
-
-    static_routes_dir = os.path.join(BASE_DIR, "static", "routes")
-    os.makedirs(static_routes_dir, exist_ok=True)
-    map_result = {"route_map_url": None, "image_base64": None}
-
-    response = _handle_query_core(user_query)
+    result_dict = _handle_query_core(user_query)
+    response = result_dict["response"]
+    image_data = result_dict.get("image") if show_route_map else None
     
-    # Check if image was captured during tool execution
-    if _captured_route_image:
-        if DEBUG:
-            print(f"[handle_query_web] Using captured route image from tool execution, length: {len(_captured_route_image)}")
-        map_result["image_base64"] = _captured_route_image
-    
-    if not (isinstance(response, str) and response.startswith("Route found:")):
-        map_result["route_map_url"] = None
-
     if DEBUG:
         print(f"[handle_query_web] Final response: {response[:100] if response else 'None'}")
-        print(f"[handle_query_web] map_result keys: {map_result.keys()}")
-        print(f"[handle_query_web] image_base64 present: {bool(map_result.get('image_base64'))}")
-        if map_result.get('image_base64'):
-            print(f"[handle_query_web] image_base64 length: {len(map_result.get('image_base64'))}")
+        print(f"[handle_query_web] image_base64 present: {bool(image_data)}")
+        if image_data:
+            print(f"[handle_query_web] image_base64 length: {len(image_data)}")
 
     return {
         "response": response,
-        "route_map_url": map_result["route_map_url"],
-        "image_base64": map_result.get("image_base64"),
+        "image_base64": image_data,
     }
         
 if __name__ == "__main__":
