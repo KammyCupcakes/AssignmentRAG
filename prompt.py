@@ -42,19 +42,21 @@ FALLBACK_PHRASES = [
 ]
 
 SYSTEM_PROMPT = ("You are a helpful assistant for UMass Boston transportation. "
-        "If the user asks a question, try to answer it based on previous context first. If the answer is not found, search the documents using a tool call."
-        "If the user asks for walking directions, respond with a prompt to get unknown information (starting location and ending location), and make a tool call"
-        "to get the walking directions. Always use the provided tools or previous tool responses to answer the user's question, and do not attempt to generate them yourself. ")
+        "Your goal is to help answer questions about UMass Boston transportation and campus services. "
+        "For any question about transportation, parking, shuttle schedules, walking directions, or campus services, use the search tool to find relevant information. "
+        "If the user asks for walking directions between campus locations, make a tool call to get_walking_directions with the starting and ending locations. "
+        "Always prioritize providing helpful information based on tool results. "
+        "If a user asks about something outside UMass Boston's scope, politely explain that you can only help with UMass Boston transportation topics.")
 
 ONBOARDING_MESSAGE = ("Hello, I am your assistant for transportation at UMass Boston."
 "You can ask me questions about UMass Boston transportation, such as bus schedules, shuttle routes, parking information, and more. "
 "If you want to get walking directions between two locations, provide your starting location, ending location, and preferred algorithm (A* or Dijkstra). ")
 
 SUGGESTED_QUESTIONS = [
-    "What are the bus schedules for UMass Boston?",
+    "What are the shuttle routes at UMass Boston?",
+    "When does the last bus leave campus?",
     "How do I get from West Garage to Campus center?",
-    "What shuttle routes are available on campus?",
-    "Where can I find information about parking permits?",
+    "How much does it cost to get a parking permit for the semester?",
 ]
 TOOLS_RESPONSE_MAX_TOKENS = 3000
 DEBUG = os.getenv("ASSIGNMENTRAG_DEBUG") == "1"
@@ -67,9 +69,9 @@ If the tool results contain factual information relevant to the user's query, us
 Do not include bracketed source markers in the answer text. The app will add a Sources section when public web sources are available.
 If low confidence is False and at least one result is present, provide a direct answer from the top-ranked evidence and do not say you lack information.
 Always prioritize accuracy and grounding in the provided tool results when formulating your response.
-Treat the top-ranked evidence snippet as the primary grounding, then use additional results only if they add non-duplicative detail.
-If the tool results indicate an error or issue with retrieving information, respond strictly with one of the fallback phrases, 
-and no extra text:\n\nFALLBACK PHRASES: " + ", ".join(FALLBACK_PHRASES) + ". \n\n"
+If the tool results indicate an error or issue with retrieving information, respond with a message letting the user know that relevant information could not be found.
+Only use fallback phrases if no useful information was found despite searching multiple times, responding only with the fallback phrase.
+\n\nFALLBACK PHRASES: " + ", ".join(FALLBACK_PHRASES) + ". \n\n"
 """
 
 def log_unanswered_questions(question):
@@ -123,7 +125,6 @@ _captured_route_image = None
 
 client = None
 
-
 def get_client():
     global client
     if client is None:
@@ -162,6 +163,12 @@ def format_route_request(route_info):
         f"Algorithm: {route_info['algorithm']}"
     )
 
+def get_openai_response(messages):
+    return client.chat.completions.create(
+        model="gpt-oss-120b:free",
+        messages=messages,
+        tools=TOOLS,
+    )
 
 def is_web_source(source: str | None) -> bool:
     return isinstance(source, str) and source.strip().lower().startswith(("http://", "https://"))
@@ -236,23 +243,38 @@ def collect_search_sources(tool_results: list[dict]) -> list[dict]:
 
 
 def _handle_deterministic_route(user_query):
+    final_response = None
     pending_route_response = try_complete_pending_route(user_query, get_route)
-    if pending_route_response is not None:
-        return pending_route_response
+    while (1):
+        if pending_route_response is not None:
+            print(f"Pending route response: {pending_route_response}")
+            final_response = pending_route_response
+            break
 
-    route_info = parse_route_query(user_query)
-    clarification_message = missing_or_unresolved_message(route_info)
-    if route_info["is_route"] and not clarification_message:
-        return handle_route_info_with_context(route_info, get_route)
+        route_info = parse_route_query(user_query)
+        clarification_message = missing_or_unresolved_message(route_info)
+        if route_info["is_route"] and not clarification_message:
+            print(f"Parsed route info: {route_info}")
+            final_response = handle_route_info_with_context(route_info, get_route)
+            break
 
-    continuation_response = handle_route_continuation_query(user_query, get_route)
-    if continuation_response is not None:
-        return continuation_response
+        continuation_response = handle_route_continuation_query(user_query, get_route)
+        if continuation_response is not None:
+            print(f"Route continuation response: {continuation_response}")
+            final_response = continuation_response
+            break
 
-    if route_info["is_route"]:
-        return start_pending_route(route_info)
+        if route_info["is_route"]:
+            print(f"Parsed route info: {route_info}")
+            final_response = start_pending_route(route_info)
+            break
+        break  # Not a route query, exit the loop
 
-    return None
+    global _captured_route_image
+    if final_response and final_response.startswith("Route found:"):
+        _captured_route_image = final_response
+
+    return final_response
 
 
 def _handle_query_core(user_query):
@@ -266,12 +288,7 @@ def _handle_query_core(user_query):
     messages_history.append({"role": "user", "content": user_query})
 
     try:
-        openrouter_client = get_client()
-        response = openrouter_client.chat.completions.create(
-            model="openai/gpt-oss-120b:free",
-            messages = messages_history, # Passing all history here
-            tools=TOOLS,
-        )
+        response = get_openai_response(messages_history)
 
         answer = response.choices[0].message
 
@@ -323,15 +340,16 @@ def _handle_query_core(user_query):
         generated_reprompt = TOOL_REPROMPT_TEMPLATE.format(tool_results=formatted_results)
 
         messages_history.append({"role": "system", "content": generated_reprompt})
-        response = openrouter_client.chat.completions.create(
-            model="openai/gpt-oss-120b:free",
-            messages = messages_history,
-            tools=TOOLS,
-        )
+        response = get_openai_response(messages_history)
         final_message = response.choices[0].message
         final_response = getattr(final_message, "content", "")
         final_response = strip_unsupported_citation_markers(final_response)
         final_response = append_sources_section(final_response, collect_search_sources(tool_results))
+        final_response = final_message.content or ""
+
+        # If response is blank, provide a helpful fallback
+        if not final_response.strip():
+            final_response = "I'm having trouble formulating a response. Could you rephrase your question?"
 
         if (not final_response or any(phrase.lower() in final_response.lower() for phrase in FALLBACK_PHRASES)):
             log_unanswered_questions(user_query)
@@ -342,7 +360,7 @@ def _handle_query_core(user_query):
         return final_response
 
     except Exception as e:
-        return f"I hit an error: {e}"
+        return f"I hit an error: {e} at line {sys.exc_info()[-1].tb_lineno}"
 
 def format_tool_results_for_prompt(tool_results) -> str:
         prompt_blocks: list[str] = []
@@ -418,14 +436,14 @@ def handle_query_web(user_query, show_route_map=False):
     global _captured_route_image
     _captured_route_image = None  # Reset for this request
     
+    get_client()  # Ensure client is initialized before handling the query
+
     if not show_route_map:
         return {"response": handle_query(user_query), "route_map_url": None, "image_base64": None}
 
     static_routes_dir = os.path.join(BASE_DIR, "static", "routes")
     os.makedirs(static_routes_dir, exist_ok=True)
     map_result = {"route_map_url": None, "image_base64": None}
-
-
 
     response = _handle_query_core(user_query)
     
