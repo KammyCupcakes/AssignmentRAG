@@ -78,6 +78,10 @@ Run all tests from the AssignmentRAG folder:
 
 py -3.12 -m unittest
 
+To see retrieval scores:
+
+py .\retrieval_metrics.py --questions .\eval_questions.json
+
 Notes
 
 - Run ingestion before expecting RAG answers from the source documents.
