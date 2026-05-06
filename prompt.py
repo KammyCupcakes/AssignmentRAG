@@ -65,10 +65,11 @@ TOOL_REPROMPT_TEMPLATE = """Tool call results:
 {tool_results}
 
 Incorporate these results into your next response to the user, using them as needed to answer the user's question.
-If the tool results contain factual information relevant to the user's query, use that information in your response.
 Do not include bracketed source markers in the answer text. The app will add a Sources section when public web sources are available.
 If low confidence is False and at least one result is present, provide a direct answer from the top-ranked evidence and do not say you lack information.
-Always prioritize accuracy and grounding in the provided tool results when formulating your response.
+IMPORTANT: Only use results that actually contain information relevant to the query. If a result only contains generic location information 
+(like a standard campus address with no other details), do not use it unless it directly answers the question. 
+Do not guess or infer beyond what is explicitly stated in the evidence.
 If the tool results indicate an error or issue with retrieving information, respond with a message letting the user know that relevant information could not be found.
 Only use fallback phrases if no useful information was found despite searching multiple times, responding only with the fallback phrase.
 \n\nFALLBACK PHRASES: " + ", ".join(FALLBACK_PHRASES) + ". \n\n"
@@ -241,6 +242,31 @@ def collect_search_sources(tool_results: list[dict]) -> list[dict]:
     return sources
 
 
+def is_boilerplate_content(text: str, query: str) -> bool:
+    """
+    Detect if text is likely boilerplate/footer content that's not relevant to the query.
+    Common pattern: just an address with no substantive query-related content.
+    """
+    if not text:
+        return False
+    
+    # Check if it's just the standard UMass Boston address repeated
+    text_lower = text.lower().strip()
+    if "100 morrissey" in text_lower or "morrissey blvd" in text_lower:
+        # If it's ONLY the address (maybe with some formatting), it's boilerplate
+        # Allow it through if there's substantial other content
+        words = text_lower.split()
+        if len(words) < 15:  # Short text containing the address is likely just the footer
+            # Check if query terms appear in the text
+            query_terms = set(query.lower().split())
+            text_terms = set(text_lower.split())
+            matching_terms = query_terms & text_terms
+            if len(matching_terms) < 2:  # Very few query terms = boilerplate
+                return True
+    
+    return False
+
+
 def _handle_deterministic_route(user_query):
     """Handle deterministic route queries. Returns response text or None. Image captured in context variable."""
     pending_route_response = try_complete_pending_route(user_query, get_route)
@@ -407,7 +433,15 @@ def format_tool_results_for_prompt(tool_results) -> dict:
                 ]
                 if result.get("error"):
                     lines.append(f"Error: {result.get('error')}")
-                for item in result.get("results", [])[:5]:
+                
+                # Filter out boilerplate results
+                query = result.get("query", "")
+                filtered_results = [
+                    item for item in result.get("results", [])
+                    if not is_boilerplate_content(item.get("text", ""), query)
+                ]
+                
+                for item in filtered_results[:5]:
                     document_name = item.get("document_name") or item.get("title") or "Unknown source"
                     source = item.get("source") or item.get("url") or ""
                     chunk_index = item.get("chunk_index")
@@ -422,6 +456,11 @@ def format_tool_results_for_prompt(tool_results) -> dict:
                             f"Evidence: {evidence}",
                         ]
                     )
+                
+                # If all results were filtered out, add a note
+                if not filtered_results and result.get("results"):
+                    lines.append("Note: All results were boilerplate or insufficient content.")
+                
                 prompt_blocks.append("\n".join(lines))
                 continue
             prompt_blocks.append(f"Tool: {name}\nResult: {result}")
