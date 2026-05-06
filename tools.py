@@ -1,4 +1,3 @@
-import random
 import re
 import sys
 import os
@@ -6,6 +5,7 @@ from openai.types.chat import ChatCompletionFunctionToolParam
 from typing import Any
 import inspect
 import chromadb
+from pathlib import Path
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -17,21 +17,68 @@ if BEACONNAV_SRC not in sys.path:
 from BeaconNav.src.main import get_route
 
 DATA_PATH = r"data"
-CHROMA_PATH = r"chroma_db"
+CHROMA_PATH = Path(BASE_DIR) / "chroma_db"
+DEBUG = os.getenv("ASSIGNMENTRAG_DEBUG") == "1"
 
-chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
+_chroma_client = None
+_collection = None
 
-collection = chroma_client.get_or_create_collection(name="public_transportation")
 
-def search_documents(query: str, max_results: int = 3) -> list[dict[str, Any]]:
-    results = collection.query(
-        query_texts=[query],
-        n_results=max_results,
-    )
-    print(f"Search query: '{query}' returned {len(results.get('documents', [[]])[0])} results.")
-    print(f"Full search results: {results}")
-    documents = results.get('documents', [[]])[0]
-    return documents
+def get_collection():
+    global _chroma_client, _collection
+    if _collection is None:
+        _chroma_client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+        _collection = _chroma_client.get_or_create_collection(name="public_transportation")
+    return _collection
+
+
+def search_documents(query: str, max_results: int = 3) -> dict[str, Any]:
+    try:
+        collection = get_collection()
+        results = collection.query(
+            query_texts=[query],
+            n_results=max_results,
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception:
+        return {
+            "query": query,
+            "low_confidence": True,
+            "results": [],
+            "error": (
+                "Document search is temporarily unavailable because the local "
+                "vector database could not be opened."
+            ),
+        }
+
+    documents = results.get("documents", [[]])[0]
+    metadatas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
+
+    if DEBUG:
+        print(f"Search query: '{query}' returned {len(documents)} results.")
+
+    structured_results = []
+    for index, document in enumerate(documents):
+        metadata = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
+        distance = distances[index] if index < len(distances) else None
+        structured_results.append(
+            {
+                "rank": index + 1,
+                "text": document,
+                "source": metadata.get("source", ""),
+                "document_name": metadata.get("document_name", "Unknown source"),
+                "source_type": metadata.get("source_type", ""),
+                "chunk_index": metadata.get("chunk_index"),
+                "distance": distance,
+            }
+        )
+
+    return {
+        "query": query,
+        "low_confidence": len(structured_results) == 0,
+        "results": structured_results,
+    }
 
 def clean_location_text(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", text or "").strip()
@@ -49,7 +96,7 @@ def clean_location_text(text: str) -> str:
     )
     return cleaned.strip(" \t\r\n.,!?;:")
 
-def get_walking_directions(starting_location: str, ending_location: str, algorithm: str = random.choice(["astar", "dijkstra"])) -> dict[str, Any]:
+def get_walking_directions(starting_location: str, ending_location: str, algorithm: str = "astar") -> dict[str, Any]:
         starting_location = clean_location_text(starting_location)
         ending_location = clean_location_text(ending_location)
         try:

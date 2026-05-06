@@ -82,7 +82,10 @@
             e.preventDefault();
             const message = input.value;
             input.value = '';
-            chat.innerHTML += `<div class="message user">${message}</div>`;
+            const userMessage = document.createElement('div');
+            userMessage.className = 'message user';
+            userMessage.textContent = message;
+            chat.appendChild(userMessage);
             const loadingMessage = "loading-" + Date.now();
             chat.innerHTML += `<div id="${loadingMessage}" class="loading"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
             chat.scrollTop = chat.scrollHeight;
@@ -103,7 +106,10 @@
                 }
                 if (!response.ok) {
                     console.error('Server error:', data);
-                    chat.innerHTML += `<div class="message assistant">Server error: ${data.response || 'Unknown error'}</div>`;
+                    const errorMessage = document.createElement('div');
+                    errorMessage.className = 'message assistant';
+                    errorMessage.textContent = `Server error: ${data.response || 'Unknown error'}`;
+                    chat.appendChild(errorMessage);
                     chat.scrollTop = chat.scrollHeight;
                     return;
                 }
@@ -114,7 +120,10 @@
                     loadingElement.remove();
                 }
                 console.error('Error processing request:', error);
-                chat.innerHTML += `<div class="message assistant">Error processing your request: ${error.message}</div>`;
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'message assistant';
+                errorMessage.textContent = `Error processing your request: ${error.message}`;
+                chat.appendChild(errorMessage);
                 chat.scrollTop = chat.scrollHeight;
             }
         });

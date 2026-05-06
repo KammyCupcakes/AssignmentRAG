@@ -31,6 +31,7 @@ class LocationResolverTests(unittest.TestCase):
             ("campus center", "Campus Center"),
             ("garage", "Parking Garage"),
             ("isc", "Integrated Sciences Complex"),
+            ("residence halls", "Dormitory"),
         ]
 
         for value, expected in cases:
