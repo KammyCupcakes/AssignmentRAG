@@ -54,7 +54,7 @@ ONBOARDING_MESSAGE = ("Hello, I am your assistant for transportation at UMass Bo
 
 SUGGESTED_QUESTIONS = [
     "What are the shuttle routes at UMass Boston?",
-    "When does the last bus leave campus?",
+    "When do shuttle busses run?",
     "How do I get from West Garage to Campus center?",
     "How much does it cost to get a parking permit for the semester?",
 ]
