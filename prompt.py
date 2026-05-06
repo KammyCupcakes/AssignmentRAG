@@ -59,6 +59,7 @@ SUGGESTED_QUESTIONS = [
     "How much does it cost to get a parking permit for the semester?",
 ]
 TOOLS_RESPONSE_MAX_TOKENS = 3000
+MAX_TOOL_ROUNDS = 3
 DEBUG = os.getenv("ASSIGNMENTRAG_DEBUG") == "1"
 
 TOOL_REPROMPT_TEMPLATE = """Tool call results:
@@ -209,20 +210,6 @@ def strip_unsupported_citation_markers(answer: str) -> str:
     return re.sub(r"\s*\u3010[^\u3011]*\u2020source\u3011", "", answer)
 
 
-def append_sources_section(answer: str, sources: list[dict]) -> str:
-    answer = strip_unsupported_citation_markers(answer)
-
-    if not isinstance(answer, str) or answer.startswith("Route found:"):
-        return answer
-
-    sources_section = format_sources_section(sources)
-    if not sources_section:
-        return answer
-
-    if "Sources:" in answer:
-        return answer
-
-    return f"{answer.rstrip()}\n\n{sources_section}"
 
 
 def collect_search_sources(tool_results: list[dict]) -> list[dict]:
@@ -240,6 +227,27 @@ def collect_search_sources(tool_results: list[dict]) -> list[dict]:
                 sources.append(item)
 
     return sources
+
+
+def collect_search_citations(tool_results: list[dict]) -> list[dict]:
+    citations = []
+    seen = set()
+
+    for source_info in collect_search_sources(tool_results):
+        document_name = str(source_info.get("document_name") or "").strip() or "Unknown source"
+        source_value = str(source_info.get("source") or "").strip()
+        if not source_value:
+            continue
+
+        citation_key = (document_name, source_value)
+
+        if citation_key in seen:
+            continue
+        seen.add(citation_key)
+
+        citations.append({"document_name": document_name, "source": source_value})
+
+    return citations
 
 
 def is_boilerplate_content(text: str, query: str) -> bool:
@@ -311,68 +319,73 @@ def _handle_query_core(user_query):
     messages_history.append({"role": "user", "content": user_query})
 
     try:
-        response = get_openai_response(messages_history)
-
-        answer = response.choices[0].message
-
-        tool_calls = getattr(answer, "tool_calls", None) or []
-        if not isinstance(tool_calls, (list, tuple)):
-            tool_calls = []
-
-        if not tool_calls and getattr(answer, "content", None):
-            final_response = strip_unsupported_citation_markers(answer.content)
-            messages_history.append({"role": "assistant", "content": final_response})
-            # No image for non-route LLM responses
-            return {"response": final_response, "image": None}
-
         tool_results: list[dict[str, Any]] = []
-        for tool_call in tool_calls:
-            function_name = tool_call.function.name
-            arguments_raw = tool_call.function.arguments or "{}"
+        final_response = ""
 
-            try:
-                arguments = json.loads(arguments_raw)
-            except json.JSONDecodeError:
-                arguments = {}
+        for _ in range(MAX_TOOL_ROUNDS):
+            response = get_openai_response(messages_history)
+            answer = response.choices[0].message
 
-            database_path = os.path.join(BASE_DIR, "data", "chroma_db")
+            tool_calls = getattr(answer, "tool_calls", None) or []
+            if not isinstance(tool_calls, (list, tuple)):
+                tool_calls = []
 
-            try:
-                tool_result = execute_tool_call(
-                    function_name,
-                    arguments,
-                    tool_context={"database_path": database_path},
-                )
-                tool_results.append(
-                    {
-                        "name": function_name,
-                        "arguments": arguments,
-                        "result": tool_result,
-                    }
-                )
+            if not tool_calls:
+                final_response = strip_unsupported_citation_markers(getattr(answer, "content", "") or "")
+                if final_response and final_response.strip():
+                    break
 
-            except Exception as e:
-                tool_results.append(
-                    {
-                        "name": function_name,
-                        "arguments": arguments,
-                        "result": {"error": f"Error executing tool {function_name}: {str(e)}"},
-                    }
-                )
+                messages_history.append({
+                    "role": "system",
+                    "content": "Provide a direct, non-empty answer using the available context. Do not return an empty response.",
+                })
+                continue
 
-        formatted_results = format_tool_results_for_prompt(tool_results)
-        generated_reprompt = TOOL_REPROMPT_TEMPLATE.format(tool_results=formatted_results["text"])
+            round_tool_results: list[dict[str, Any]] = []
+            for tool_call in tool_calls:
+                function_name = tool_call.function.name
+                arguments_raw = tool_call.function.arguments or "{}"
 
-        messages_history.append({"role": "system", "content": generated_reprompt})
-        response = get_openai_response(messages_history)
-        final_message = response.choices[0].message
-        final_response = getattr(final_message, "content", "")
-        final_response = strip_unsupported_citation_markers(final_response)
-        final_response = append_sources_section(final_response, collect_search_sources(tool_results))
+                try:
+                    arguments = json.loads(arguments_raw)
+                except json.JSONDecodeError:
+                    arguments = {}
+
+                database_path = os.path.join(BASE_DIR, "data", "chroma_db")
+
+                try:
+                    tool_result = execute_tool_call(
+                        function_name,
+                        arguments,
+                        tool_context={"database_path": database_path},
+                    )
+                    round_tool_results.append(
+                        {
+                            "name": function_name,
+                            "arguments": arguments,
+                            "result": tool_result,
+                        }
+                    )
+                except Exception as e:
+                    round_tool_results.append(
+                        {
+                            "name": function_name,
+                            "arguments": arguments,
+                            "result": {"error": f"Error executing tool {function_name}: {str(e)}"},
+                        }
+                    )
+
+            tool_results.extend(round_tool_results)
+
+            formatted_results = format_tool_results_for_prompt(round_tool_results)
+            generated_reprompt = TOOL_REPROMPT_TEMPLATE.format(tool_results=formatted_results["text"])
+            messages_history.append({"role": "system", "content": generated_reprompt})
+
+        citations = collect_search_citations(tool_results)
 
         # If response is blank, provide a helpful fallback
         if not final_response.strip():
-            final_response = "I'm having trouble formulating a response. Could you rephrase your question?"
+            final_response = "I'm having trouble formulating a response from the available results. Could you rephrase your question?"
 
         if (not final_response or any(phrase.lower() in final_response.lower() for phrase in FALLBACK_PHRASES)):
             log_unanswered_questions(user_query)
@@ -382,12 +395,13 @@ def _handle_query_core(user_query):
 
         return {
             "response": final_response,
-            "image": formatted_results.get("image")
+            "image": formatted_results.get("image") if 'formatted_results' in locals() else None,
+            "citations": citations,
         }
 
     except Exception as e:
         error_msg = f"I hit an error: {e} at line {sys.exc_info()[-1].tb_lineno}"
-        return {"response": error_msg, "image": None}
+        return {"response": error_msg, "image": None, "citations": []}
 
 def format_tool_results_for_prompt(tool_results) -> dict:
         """Format tool results for LLM. Returns dict with 'text' (formatted results) and 'image' (captured route image or None)."""
@@ -444,7 +458,7 @@ def format_tool_results_for_prompt(tool_results) -> dict:
                     if not is_boilerplate_content(item.get("text", ""), query)
                 ]
                 
-                for item in filtered_results[:5]:
+                for item in filtered_results:
                     document_name = item.get("document_name") or item.get("title") or "Unknown source"
                     source = item.get("source") or item.get("url") or ""
                     chunk_index = item.get("chunk_index")
@@ -496,6 +510,7 @@ def handle_query_web(user_query, show_route_map=False):
     return {
         "response": response,
         "image_base64": image_data,
+        "citations": result_dict.get("citations", []),
     }
         
 if __name__ == "__main__":

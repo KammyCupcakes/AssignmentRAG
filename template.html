@@ -13,6 +13,11 @@
         .message a:hover { color: #99ccff; text-decoration: none; }
         .user { align-self: flex-end; background-color: #e0e0e0; color: black; border-bottom-right-radius: 0; }
         .assistant { align-self: flex-start; background-color: #003366; color: white; border-bottom-left-radius: 0; }
+        .citations { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.25); }
+        .citations-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; opacity: 0.9; }
+        .citation-list { margin: 0; padding-left: 18px; }
+        .citation-list li { margin-bottom: 8px; }
+        .citation-source { display: block; font-size: 0.82rem; opacity: 0.85; margin-top: 2px; word-break: break-word; }
         .loading { align-self: flex-start; background-color: #003366; color: white; padding: 10px 15px; border-radius: 15px; border-bottom-left-radius: 0; display: inline-flex; align-items: center; gap: 6px; }
         .dot { height: 6px; width: 6px; background-color: white; border-radius: 50%; display: inline-block; animation: bounce 1.2s infinite; }
         .dot:nth-child(2) { animation-delay: 0.2s; }
@@ -103,7 +108,7 @@
             return parts.join('');
         }
 
-        function appendAssistantMessage(responseText, routeMapUrl, imageBase64) {
+        function appendAssistantMessage(responseText, routeMapUrl, imageBase64, citations) {
             const messageElement = document.createElement('div');
             messageElement.className = 'message assistant';
             messageElement.innerHTML = formatLinks(responseText || '');
@@ -124,6 +129,49 @@
                 mapImage.alt = 'Route map';
                 messageElement.appendChild(document.createElement('br'));
                 messageElement.appendChild(mapImage);
+            }
+
+            if (Array.isArray(citations) && citations.length > 0) {
+                const citationsWrapper = document.createElement('div');
+                citationsWrapper.className = 'citations';
+
+                const title = document.createElement('div');
+                title.className = 'citations-title';
+                title.textContent = 'Citations';
+                citationsWrapper.appendChild(title);
+
+                const citationList = document.createElement('ol');
+                citationList.className = 'citation-list';
+
+                citations.slice(0, 5).forEach((citation) => {
+                    const item = document.createElement('li');
+
+                    const citationTitle = document.createElement('div');
+                    citationTitle.className = 'citation-source';
+                    citationTitle.textContent = citation.document_name || 'Unknown source';
+                    item.appendChild(citationTitle);
+
+                    const citationSource = document.createElement('div');
+                    citationSource.className = 'citation-source';
+
+                    if (citation.source && /^https?:\/\//i.test(citation.source)) {
+                        const link = document.createElement('a');
+                        link.href = citation.source;
+                        link.target = '_blank';
+                        link.rel = 'noreferrer noopener';
+                        link.textContent = citation.source;
+                        citationSource.appendChild(link);
+                    } else {
+                        citationSource.textContent = citation.source || 'Unknown source';
+                    }
+
+                    item.appendChild(citationSource);
+
+                    citationList.appendChild(item);
+                });
+
+                citationsWrapper.appendChild(citationList);
+                messageElement.appendChild(citationsWrapper);
             }
 
             chat.appendChild(messageElement);
@@ -179,7 +227,7 @@
                     chat.scrollTop = chat.scrollHeight;
                     return;
                 }
-                appendAssistantMessage(data.response, data.route_map_url, data.image_base64);
+                appendAssistantMessage(data.response, data.route_map_url, data.image_base64, data.citations);
             } catch (error) {
                 if (loadingElement) {
                     loadingElement.remove();

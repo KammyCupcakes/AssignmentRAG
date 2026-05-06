@@ -25,7 +25,7 @@ def chat():
     except Exception as e:
         print(f"Error in chat endpoint: {str(e)}")
         print(traceback.format_exc())
-        return jsonify({"response": f"Error: {str(e)}", "route_map_url": None, "image_base64": None}), 500
+        return jsonify({"response": f"Error: {str(e)}", "route_map_url": None, "image_base64": None, "citations": []}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
