@@ -115,6 +115,9 @@ messages_history = [
     {"role": "system", "content": SYSTEM_PROMPT}
 ]
 
+# Global to store captured route image across tool execution
+_captured_route_image = None
+
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -150,53 +153,16 @@ def format_route_request(route_info):
     )
 
 
-def _handle_query_core(user_query, route_getter):
+def _handle_query_core(user_query):
     user_query = (user_query or "").strip()
 
     # Add the user's message to the conversation history
     messages_history.append({"role": "user", "content": user_query})
 
-    pending_route_response = try_complete_pending_route(user_query, route_getter)
-    if pending_route_response is not None:
-        return pending_route_response
-
-    # if user_query.lower() in ["exit", "quit", "goodbye", "stop", "bye"]:
-    #     clear_last_route_context()
-    #     return "Goodbye!"
-
-    # if user_query.lower() in ["cancel", "nevermind", "never mind"] and get_last_route_context():
-    #     clear_last_route_context()
-    #     return "Okay, I cleared the last route context."
-
-    # route_info = parse_route_query(user_query)
-    # if route_info["is_route"] and not missing_or_unresolved_message(route_info):
-    #     return handle_route_info_with_context(route_info, get_route)
-
-    # route_continuation_response = handle_route_continuation_query(user_query, get_route)
-    # if route_continuation_response is not None:
-    #     return route_continuation_response
-
-    # if route_info["is_route"]:
-    #     if missing_or_unresolved_message(route_info):
-    #         return start_pending_route(route_info)
-
-    #     return handle_route_info_with_context(route_info, get_route)
-
-    # results = get_collection().query(
-    #     query_texts=[user_query],
-    #     n_results=3
-    # )
-    # documents = results.get('documents', [[]])[0]
-    # context = "\n\n".join(documents)
-
-    # # Telling the AI about what specific documents to use for the current question
-    # current_system_prompt = (
-    #     "You are a helpful assistant for UMass Boston transportation. "
-    #     "Use ONLY the following context to answer. If the answer is not in the context, "
-    #     "strictly say: 'I'm sorry, I don't have that information in my documents.'\n\n"
-    #     f"Context:\n{context}"
-    # )
-    # messages_history[0]["content"] = current_system_prompt
+    # pending_route_response = try_complete_pending_route(user_query, route_getter)
+    # print(f"Pending route response: {pending_route_response}")  # Debug print to see if pending route is being triggered
+    # if pending_route_response is not None:
+    #     return pending_route_response
 
     try:
         response = client.chat.completions.create(
@@ -208,11 +174,6 @@ def _handle_query_core(user_query, route_getter):
         answer = response.choices[0].message
 
         tool_calls = answer.tool_calls or []
-        if tool_calls:
-            for tool_call in tool_calls:
-                function_name = tool_call.function.name
-                arguments_raw = tool_call.function.arguments or "{}"
-
         tool_results: list[dict[str, Any]] = []
         for tool_call in tool_calls:
             function_name = tool_call.function.name
@@ -238,6 +199,7 @@ def _handle_query_core(user_query, route_getter):
                         "result": tool_result,
                     }
                 )
+
             except Exception as e:
                 tool_results.append(
                     {
@@ -257,14 +219,15 @@ def _handle_query_core(user_query, route_getter):
             tools=TOOLS,
         )
         final_message = response.choices[0].message
+        final_response = final_message.content
 
-        if (not final_message.content or any(phrase.lower() in final_message.content.lower() for phrase in FALLBACK_PHRASES)):
+        if (not final_response or any(phrase.lower() in final_response.lower() for phrase in FALLBACK_PHRASES)):
             log_unanswered_questions(user_query)
 
         # Add the assistant's response to the conversation history for future context
-        messages_history.append({"role": "assistant", "content": final_message.content})
+        messages_history.append({"role": "assistant", "content": final_response})
 
-        return final_message.content
+        return final_response
 
     except Exception as e:
         return f"I hit an error: {e}"
@@ -274,7 +237,38 @@ def format_tool_results_for_prompt(tool_results) -> str:
         for tool_result in tool_results:
             name = tool_result["name"]
             result = tool_result["result"]
-            print(f"\n\n\n\nTool call result for {name}: {result}")  # Debug print to see tool results
+
+            # CAPTURE IMAGE FROM WALKING DIRECTIONS TOOL
+            if name == "get_walking_directions" and isinstance(result, dict):
+                if result.get("image"):
+                    print(f"[format_tool_results_for_prompt] Found image in walking directions result, length: {len(result.get('image'))}")
+                    # Store image in a global that handle_query_web can access
+                    global _captured_route_image
+                    _captured_route_image = result.get("image")
+                
+                lines = [
+                    f"Tool: {name}",
+                    f"Start: {result.get('start', 'n/a')}",
+                    f"End: {result.get('end', 'n/a')}",
+                    f"Algorithm: {result.get('algorithm', 'n/a')}",
+                    f"Success: {result.get('success', False)}",
+                ]
+
+                if result.get("walk_time_minutes") is not None:
+                    lines.append(f"Walk time minutes: {result.get('walk_time_minutes'):.1f}")
+
+                if result.get("distance_miles") is not None:
+                    lines.append(f"Distance miles: {result.get('distance_miles'):.2f}")
+
+                if result.get("expanded_nodes") is not None:
+                    lines.append(f"Expanded nodes: {result.get('expanded_nodes')}")
+
+                if result.get("error"):
+                    lines.append(f"Error: {result.get('error')}")
+
+                prompt_blocks.append("\n".join(lines))
+                continue
+
             if isinstance(result, dict) and result.get("results") is not None:
                 lines = [
                     f"Tool: {name}",
@@ -294,90 +288,46 @@ def format_tool_results_for_prompt(tool_results) -> str:
                 prompt_blocks.append("\n".join(lines))
                 continue
             prompt_blocks.append(f"Tool: {name}\nResult: {result}")
+        return "\n\n".join(prompt_blocks)
 
 def handle_query(user_query):
     return _handle_query_core(user_query, get_route)
 
 
 def handle_query_web(user_query, show_route_map=False):
+    global _captured_route_image
+    _captured_route_image = None  # Reset for this request
+    
     if not show_route_map:
-        return {"response": handle_query(user_query), "route_map_url": None}
+        return {"response": handle_query(user_query), "route_map_url": None, "image_base64": None}
 
     static_routes_dir = os.path.join(BASE_DIR, "static", "routes")
     os.makedirs(static_routes_dir, exist_ok=True)
-    map_result = {"route_map_url": None}
+    map_result = {"route_map_url": None, "image_base64": None}
 
-    def web_route_getter(start, end, algorithm="astar", show_map=False):
-        import matplotlib.pyplot as plt
 
-        # Web requests run in worker threads; use a non-GUI backend for safe image rendering.
-        plt.switch_backend("Agg")
 
-        map_filename = f"route_{uuid.uuid4().hex}.png"
-        map_file_path = os.path.join(static_routes_dir, map_filename)
-        route_result = get_route(
-            start,
-            end,
-            algorithm=algorithm,
-            show_map=False,
-            save_map_file=map_file_path,
-        )
-        if (
-            isinstance(route_result, dict)
-            and route_result.get("success")
-            and os.path.exists(map_file_path)
-        ):
-            map_result["route_map_url"] = f"/static/routes/{map_filename}"
-        return route_result
-
-    response = _handle_query_core(user_query, web_route_getter)
+    response = _handle_query_core(user_query)
+    
+    # Check if image was captured during tool execution
+    if _captured_route_image:
+        print(f"[handle_query_web] Using captured route image from tool execution, length: {len(_captured_route_image)}")
+        map_result["image_base64"] = _captured_route_image
+    
     if not (isinstance(response, str) and response.startswith("Route found:")):
         map_result["route_map_url"] = None
+
+    print(f"[handle_query_web] Final response: {response[:100] if response else 'None'}")
+    print(f"[handle_query_web] map_result keys: {map_result.keys()}")
+    print(f"[handle_query_web] image_base64 present: {bool(map_result.get('image_base64'))}")
+    if map_result.get('image_base64'):
+        print(f"[handle_query_web] image_base64 length: {len(map_result.get('image_base64'))}")
 
     return {
         "response": response,
         "route_map_url": map_result["route_map_url"],
+        "image_base64": map_result.get("image_base64"),
     }
-
-def process_query(user_query: str) -> str:
-        route_info = parse_route_query(user_query)
-
-        if route_info["is_route"]:
-            if route_info.get("clarification_reason"):
-                return f"Assistant: {format_route_request(route_info)}\n"
-
-            start = route_info["resolved_start"] or route_info["start"]
-            end = route_info["resolved_destination"] or route_info["destination"]
-            algorithm = route_info["algorithm"]
-
-            if not start:
-                start = input("Starting location: ")
-
-            if not end:
-                end = input("Ending location: ")
-
-            try:
-                route = get_route(start, end, algorithm, show_map=True)
-
-                if not route["success"]:
-                    return f"Assistant: {route['error']}\n"
-
-                context = (
-                    f"Assistant: Here is the walking route information:\n"
-                    f"Start: {route['start']}\n"
-                    f"End: {route['end']}\n"
-                    f"Algorithm: {route['algorithm']}\n"
-                    f"Estimated walk time: {route['walk_time_minutes']:.1f} minutes\n"
-                    f"Walking distance: {route['distance_miles']:.2f} miles\n"
-                    f"Expanded nodes: {route['expanded_nodes']}\n"
-                )
-
-                handle_query(user_query, context)  # To maintain conversation history
-
-            except Exception as e:
-                return f"Assistant: I could not calculate the walking route right now. Error: {e}\n"
-        else:
-            return handle_query(user_query)
         
 if __name__ == "__main__":
     print(ONBOARDING_MESSAGE)

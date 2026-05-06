@@ -1,5 +1,6 @@
-from flask import Flask, request, render_template_string, session
+from flask import Flask, request, render_template_string, session, jsonify
 import os
+import traceback
 from prompt import handle_query_web, ONBOARDING_MESSAGE
 
 app = Flask(__name__)
@@ -15,11 +16,16 @@ def index():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    data = request.get_json()
-    query = data.get('query', '')
-    show_route_map = bool(data.get('show_route_map', False))
-    result = handle_query_web(query, show_route_map=show_route_map)
-    return result
+    try:
+        data = request.get_json()
+        query = data.get('query', '')
+        show_route_map = bool(data.get('show_route_map', False))
+        result = handle_query_web(query, show_route_map=show_route_map)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in chat endpoint: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({"response": f"Error: {str(e)}", "route_map_url": None, "image_base64": None}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
