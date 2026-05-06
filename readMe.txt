@@ -1,56 +1,86 @@
 UMass Boston Transportation Chatbot
 
-This project is a chatbot that answers questions about transportation at UMass Boston. It uses PDF documents as its knowledge source, stores the information in ChromaDB, and uses OpenRouter to generate responses.
+This project is a local RAG chatbot for UMass Boston transportation and campus navigation questions. It uses local PDFs from the data folder, stores chunks in ChromaDB, uses OpenRouter for chatbot answers, and can call BeaconNav for campus walking routes.
 
 Features
-Answers transportation-related questions using PDF-based knowledge
-Vector database powered by ChromaDB
-AI responses via OpenRouter API
-CLI and Web UI support (Flask)
-Setup Instructions
-1. Create a .env file
 
-In the root project directory, create a file named .env and add your OpenRouter API key:
+- PDF-based document ingestion
+- Optional UMass transportation web crawl/cache during ingestion
+- ChromaDB vector search
+- OpenRouter chatbot responses
+- Flask web interface
+- Terminal chatbot
+- BeaconNav walking route support
+- Unanswered question logging
+
+Setup Instructions
+
+1. Go into the project folder
+
+cd AssignmentRAG
+
+2. Create and activate a virtual environment
+
+py -3.12 -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+.\.venv\Scripts\Activate.ps1
+
+3. Install dependencies
+
+python -m pip install -r requirements.txt
+
+4. Create a .env file
+
+Create a file named .env inside AssignmentRAG and add:
 
 OPENROUTER_API_KEY=YOUR_OPENROUTER_API_KEY
-2. Install Dependencies
 
-Make sure all required packages are installed:
+Run the Ingestion Pipeline
 
-pip install flask chromadb openai python-dotenv networkx
+Before using document-based answers, run:
 
-(Add any additional dependencies the project needs using the requirements.txt.)
+py -3.12 ingestion_pipeline.py
 
-3. Run the Ingestion Pipeline
+This loads PDFs from data, chunks them, creates embeddings, and stores them in chroma_db. The pipeline may also use cached/crawled UMass transportation web documents.
 
-Before starting the chatbot, you MUST run the ingestion pipeline to build the ChromaDB database from the PDFs:
+If the vector store already exists, you may see:
 
-python ingestion_pipeline.py
+Vector store already has documents.
+Current collection count: ...
+if you want to rebuild it, delete the chroma_db folder first.
 
-This step processes the PDF documents and stores embeddings in ChromaDB.
+Run the Chatbot
 
-4. Run the Chatbot
-Option A: Terminal (CLI)
+Web interface:
 
-Run the prompt-based chatbot:
+py -3.12 app.py
 
-python prompt.py
-
-Then interact directly in the terminal by asking questions or requesting routes.
-
-Option B: Web Interface (Flask)
-
-Run the web app:
-
-python app.py
-
-Then open your browser and go to:
+Then open:
 
 http://localhost:5000
 
-Use the chat interface to ask questions. Route-based inputs may prompt for additional details.
+Terminal chatbot:
+
+py -3.12 prompt.py
+
+Example Questions
+
+- What parking options are available?
+- Can I bike to UMass Boston?
+- take me from u hall to quin building
+- How do I get from University Hall to McCormack?
+- How do I get to Healey Library?
+- from there how do i get to isc
+
+Testing
+
+Run all tests from the AssignmentRAG folder:
+
+py -3.12 -m unittest
 
 Notes
-Make sure the .env file is correctly configured before running anything.
-The ingestion pipeline must be run at least once before using the chatbot.
-If you update PDFs, re-run the ingestion pipeline to refresh the database.
+
+- Run ingestion before expecting RAG answers from the source documents.
+- Keep OPENROUTER_API_KEY in .env, not in Git.
+- BeaconNav route tests use mocks and should not require OpenRouter or ChromaDB.
+- unanswered_questions.txt tracks questions the chatbot could not answer.

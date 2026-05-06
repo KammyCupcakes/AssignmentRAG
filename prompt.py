@@ -56,6 +56,7 @@ SUGGESTED_QUESTIONS = [
     "Where can I find information about parking permits?",
 ]
 TOOLS_RESPONSE_MAX_TOKENS = 3000
+DEBUG = os.getenv("ASSIGNMENTRAG_DEBUG") == "1"
 
 TOOL_REPROMPT_TEMPLATE = """Tool call results:
 {tool_results}
@@ -118,10 +119,17 @@ messages_history = [
 # Global to store captured route image across tool execution
 _captured_route_image = None
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-)
+client = None
+
+
+def get_client():
+    global client
+    if client is None:
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+    return client
 
 def format_route_request(route_info):
     if route_info.get("clarification_reason") == "unresolved_start":
@@ -153,19 +161,39 @@ def format_route_request(route_info):
     )
 
 
+def _handle_deterministic_route(user_query):
+    pending_route_response = try_complete_pending_route(user_query, get_route)
+    if pending_route_response is not None:
+        return pending_route_response
+
+    route_info = parse_route_query(user_query)
+    clarification_message = missing_or_unresolved_message(route_info)
+    if route_info["is_route"] and not clarification_message:
+        return handle_route_info_with_context(route_info, get_route)
+
+    continuation_response = handle_route_continuation_query(user_query, get_route)
+    if continuation_response is not None:
+        return continuation_response
+
+    if route_info["is_route"]:
+        return start_pending_route(route_info)
+
+    return None
+
+
 def _handle_query_core(user_query):
     user_query = (user_query or "").strip()
 
-    # Add the user's message to the conversation history
+    deterministic_route_response = _handle_deterministic_route(user_query)
+    if deterministic_route_response is not None:
+        return deterministic_route_response
+
+    # Add the user's message to the conversation history for the RAG path.
     messages_history.append({"role": "user", "content": user_query})
 
-    # pending_route_response = try_complete_pending_route(user_query, route_getter)
-    # print(f"Pending route response: {pending_route_response}")  # Debug print to see if pending route is being triggered
-    # if pending_route_response is not None:
-    #     return pending_route_response
-
     try:
-        response = client.chat.completions.create(
+        openrouter_client = get_client()
+        response = openrouter_client.chat.completions.create(
             model="openai/gpt-oss-120b:free",
             messages = messages_history, # Passing all history here
             tools=TOOLS,
@@ -173,7 +201,15 @@ def _handle_query_core(user_query):
 
         answer = response.choices[0].message
 
-        tool_calls = answer.tool_calls or []
+        tool_calls = getattr(answer, "tool_calls", None) or []
+        if not isinstance(tool_calls, (list, tuple)):
+            tool_calls = []
+
+        if not tool_calls and getattr(answer, "content", None):
+            final_response = answer.content
+            messages_history.append({"role": "assistant", "content": final_response})
+            return final_response
+
         tool_results: list[dict[str, Any]] = []
         for tool_call in tool_calls:
             function_name = tool_call.function.name
@@ -213,13 +249,13 @@ def _handle_query_core(user_query):
         generated_reprompt = TOOL_REPROMPT_TEMPLATE.format(tool_results=formatted_results)
 
         messages_history.append({"role": "system", "content": generated_reprompt})
-        response = client.chat.completions.create(
+        response = openrouter_client.chat.completions.create(
             model="openai/gpt-oss-120b:free",
             messages = messages_history,
             tools=TOOLS,
         )
         final_message = response.choices[0].message
-        final_response = final_message.content
+        final_response = getattr(final_message, "content", "")
 
         if (not final_response or any(phrase.lower() in final_response.lower() for phrase in FALLBACK_PHRASES)):
             log_unanswered_questions(user_query)
@@ -241,7 +277,8 @@ def format_tool_results_for_prompt(tool_results) -> str:
             # CAPTURE IMAGE FROM WALKING DIRECTIONS TOOL
             if name == "get_walking_directions" and isinstance(result, dict):
                 if result.get("image"):
-                    print(f"[format_tool_results_for_prompt] Found image in walking directions result, length: {len(result.get('image'))}")
+                    if DEBUG:
+                        print(f"[format_tool_results_for_prompt] Found image in walking directions result, length: {len(result.get('image'))}")
                     # Store image in a global that handle_query_web can access
                     global _captured_route_image
                     _captured_route_image = result.get("image")
@@ -275,14 +312,21 @@ def format_tool_results_for_prompt(tool_results) -> str:
                     f"Query: {result.get('query', '')}",
                     f"Low confidence: {result.get('low_confidence', False)}",
                 ]
+                if result.get("error"):
+                    lines.append(f"Error: {result.get('error')}")
                 for item in result.get("results", [])[:5]:
+                    document_name = item.get("document_name") or item.get("title") or "Unknown source"
+                    source = item.get("source") or item.get("url") or ""
+                    chunk_index = item.get("chunk_index")
+                    distance = item.get("distance")
+                    evidence = item.get("text") or item.get("evidence_snippet", "")
                     lines.extend(
                         [
-                            f"Rank {item.get('rank', '?')} | Title: {item.get('title', 'Untitled')}",
-                            f"URL: {item.get('url', '')}",
-                            f"Matched terms: {', '.join(item.get('matched_terms', [])) or 'n/a'}",
-                            f"Why it matched: {', '.join(item.get('match_reasons', [])) or 'n/a'}",
-                            f"Evidence: {item.get('evidence_snippet', '')}",
+                            f"Rank {item.get('rank', '?')} | Source: {document_name}",
+                            f"Path or URL: {source}",
+                            f"Chunk: {chunk_index if chunk_index is not None else 'n/a'}",
+                            f"Distance: {distance if distance is not None else 'n/a'}",
+                            f"Evidence: {evidence}",
                         ]
                     )
                 prompt_blocks.append("\n".join(lines))
@@ -311,17 +355,19 @@ def handle_query_web(user_query, show_route_map=False):
     
     # Check if image was captured during tool execution
     if _captured_route_image:
-        print(f"[handle_query_web] Using captured route image from tool execution, length: {len(_captured_route_image)}")
+        if DEBUG:
+            print(f"[handle_query_web] Using captured route image from tool execution, length: {len(_captured_route_image)}")
         map_result["image_base64"] = _captured_route_image
     
     if not (isinstance(response, str) and response.startswith("Route found:")):
         map_result["route_map_url"] = None
 
-    print(f"[handle_query_web] Final response: {response[:100] if response else 'None'}")
-    print(f"[handle_query_web] map_result keys: {map_result.keys()}")
-    print(f"[handle_query_web] image_base64 present: {bool(map_result.get('image_base64'))}")
-    if map_result.get('image_base64'):
-        print(f"[handle_query_web] image_base64 length: {len(map_result.get('image_base64'))}")
+    if DEBUG:
+        print(f"[handle_query_web] Final response: {response[:100] if response else 'None'}")
+        print(f"[handle_query_web] map_result keys: {map_result.keys()}")
+        print(f"[handle_query_web] image_base64 present: {bool(map_result.get('image_base64'))}")
+        if map_result.get('image_base64'):
+            print(f"[handle_query_web] image_base64 length: {len(map_result.get('image_base64'))}")
 
     return {
         "response": response,

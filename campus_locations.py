@@ -245,6 +245,9 @@ CAMPUS_LOCATIONS = {
             "west hall dorm",
             "east hall",
             "east hall dorms",
+            "residence hall",
+            "residence halls",
+            "res halls",
             "east",
             "west",
         ],
@@ -270,7 +273,7 @@ CAMPUS_LOCATIONS = {
         "routing_candidates": [
             "Bayside",
             "Bayside Parking",
-            "Bayside Lot"
+            "Bayside Lot",
             "Baysidelot",
         ],
         "fallback_coordinate": {
