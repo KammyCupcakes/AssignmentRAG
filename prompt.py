@@ -1,4 +1,5 @@
 import json
+import re
 from openai import OpenAI
 from dotenv import load_dotenv
 from tools import TOOLS, execute_tool_call
@@ -62,7 +63,8 @@ TOOL_REPROMPT_TEMPLATE = """Tool call results:
 {tool_results}
 
 Incorporate these results into your next response to the user, using them as needed to answer the user's question.
-If the tool results contain factual information relevant to the user's query, use that information in your response and cite it appropriately.
+If the tool results contain factual information relevant to the user's query, use that information in your response.
+Do not include bracketed source markers in the answer text. The app will add a Sources section when public web sources are available.
 If low confidence is False and at least one result is present, provide a direct answer from the top-ranked evidence and do not say you lack information.
 Always prioritize accuracy and grounding in the provided tool results when formulating your response.
 Treat the top-ranked evidence snippet as the primary grounding, then use additional results only if they add non-duplicative detail.
@@ -161,6 +163,78 @@ def format_route_request(route_info):
     )
 
 
+def is_web_source(source: str | None) -> bool:
+    return isinstance(source, str) and source.strip().lower().startswith(("http://", "https://"))
+
+
+def format_sources_section(sources: list[dict], max_sources: int = 3) -> str:
+    lines = []
+    seen_urls = set()
+
+    for source_info in sources:
+        source_url = str(source_info.get("source") or "").strip()
+        if not is_web_source(source_url):
+            continue
+
+        if source_url in seen_urls:
+            continue
+
+        seen_urls.add(source_url)
+        document_name = str(source_info.get("document_name") or "").strip()
+        if document_name:
+            lines.append(f"{len(lines) + 1}. {document_name} \u2014 {source_url}")
+        else:
+            lines.append(f"{len(lines) + 1}. {source_url}")
+
+        if len(lines) >= max_sources:
+            break
+
+    if not lines:
+        return ""
+
+    return "Sources:\n" + "\n".join(lines)
+
+
+def strip_unsupported_citation_markers(answer: str) -> str:
+    if not isinstance(answer, str):
+        return answer
+
+    return re.sub(r"\s*【[^】]*†source】", "", answer)
+
+
+def append_sources_section(answer: str, sources: list[dict]) -> str:
+    answer = strip_unsupported_citation_markers(answer)
+
+    if not isinstance(answer, str) or answer.startswith("Route found:"):
+        return answer
+
+    sources_section = format_sources_section(sources)
+    if not sources_section:
+        return answer
+
+    if "Sources:" in answer:
+        return answer
+
+    return f"{answer.rstrip()}\n\n{sources_section}"
+
+
+def collect_search_sources(tool_results: list[dict]) -> list[dict]:
+    sources = []
+    for tool_result in tool_results:
+        if tool_result.get("name") != "search_documents":
+            continue
+
+        result = tool_result.get("result")
+        if not isinstance(result, dict):
+            continue
+
+        for item in result.get("results", []):
+            if isinstance(item, dict):
+                sources.append(item)
+
+    return sources
+
+
 def _handle_deterministic_route(user_query):
     pending_route_response = try_complete_pending_route(user_query, get_route)
     if pending_route_response is not None:
@@ -206,7 +280,7 @@ def _handle_query_core(user_query):
             tool_calls = []
 
         if not tool_calls and getattr(answer, "content", None):
-            final_response = answer.content
+            final_response = strip_unsupported_citation_markers(answer.content)
             messages_history.append({"role": "assistant", "content": final_response})
             return final_response
 
@@ -256,6 +330,8 @@ def _handle_query_core(user_query):
         )
         final_message = response.choices[0].message
         final_response = getattr(final_message, "content", "")
+        final_response = strip_unsupported_citation_markers(final_response)
+        final_response = append_sources_section(final_response, collect_search_sources(tool_results))
 
         if (not final_response or any(phrase.lower() in final_response.lower() for phrase in FALLBACK_PHRASES)):
             log_unanswered_questions(user_query)
