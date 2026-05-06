@@ -74,25 +74,25 @@ def load_documents(data_path=DATA_PATH):
     
     documents = []
 
-    # for filename in os.listdir(data_path):
-    #     if filename.endswith(".pdf"):
-    #         file_path = os.path.join(data_path, filename)
+    for filename in os.listdir(data_path):
+        if filename.endswith(".pdf"):
+            file_path = os.path.join(data_path, filename)
 
-    #         reader = PdfReader(file_path)
+            reader = PdfReader(file_path)
 
-    #         full_text = ""
+            full_text = ""
 
-    #         for page_number, page in enumerate(reader.pages):
-    #             page_text = page.extract_text()
+            for page_number, page in enumerate(reader.pages):
+                page_text = page.extract_text()
 
-    #             if page_text:
-    #                 full_text += f"\n\n--- Page {page_number + 1} ---\n"
-    #                 full_text += page_text
+                if page_text:
+                    full_text += f"\n\n--- Page {page_number + 1} ---\n"
+                    full_text += page_text
 
-    #         if full_text.strip():
-    #             documents.append(
-    #                 build_document_record(file_meta={"document_name": filename, "path": file_path}, text=full_text)
-    #             )
+            if full_text.strip():
+                documents.append(
+                    build_document_record(file_meta={"document_name": filename, "path": file_path}, text=full_text)
+                )
     
     webdata = load_webdocs(urls=WEBCRAWL_URLS)
 
