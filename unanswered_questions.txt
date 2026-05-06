@@ -1,7 +1,6 @@
 Where is AV Services?
 Where is McCormack Hall?
 Where is the Alumni Lounge?
-Where is the campus center lawn?
 Where is the Science Center?
 Where is clark lot?
 where is quinn lot?
@@ -21,7 +20,6 @@ Who is the president of the university?
 where is campus center?
 Where is U-Access?
 where is the clark lot?
-Is there a food court on campus?
 if i want to go to isc after reaching quinn how do i go
 Is there bk on campus?
 im at harbor point, take me to uni hall
@@ -52,3 +50,4 @@ where is uhall
 what building is campus center
 residence hall to isc
 east residence hall to isc
+That is the registrars office, not the deans
