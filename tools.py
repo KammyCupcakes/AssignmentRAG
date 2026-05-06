@@ -6,6 +6,7 @@ from typing import Any
 import inspect
 import chromadb
 from pathlib import Path
+from rank_bm25 import BM25Okapi
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -32,12 +33,14 @@ def get_collection():
     return _collection
 
 
-def search_documents(query: str, max_results: int = 3) -> dict[str, Any]:
+def search_documents(query: str, max_results: int = 5) -> dict[str, Any]:
     try:
         collection = get_collection()
+        # Fetch candidates from vector search
+        fetch_size = max(15, max_results * 3)
         results = collection.query(
             query_texts=[query],
-            n_results=max_results,
+            n_results=fetch_size,
             include=["documents", "metadatas", "distances"],
         )
     except Exception:
@@ -55,29 +58,96 @@ def search_documents(query: str, max_results: int = 3) -> dict[str, Any]:
     metadatas = results.get("metadatas", [[]])[0]
     distances = results.get("distances", [[]])[0]
 
-    if DEBUG:
-        print(f"Search query: '{query}' returned {len(documents)} results.")
-
-    structured_results = []
+    # Build document map for all fetched candidates
+    doc_map = {}  # chunk_id -> full record
+    query_terms = set(query.lower().split())
+    
     for index, document in enumerate(documents):
         metadata = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
         distance = distances[index] if index < len(distances) else None
-        structured_results.append(
-            {
-                "rank": index + 1,
-                "text": document,
-                "source": metadata.get("source", ""),
-                "document_name": metadata.get("document_name", "Unknown source"),
-                "source_type": metadata.get("source_type", ""),
-                "chunk_index": metadata.get("chunk_index"),
-                "distance": distance,
-            }
-        )
+        
+        chunk_id = f"{metadata.get('document_name', 'unknown')}_{metadata.get('chunk_index', index)}"
+        doc_map[chunk_id] = {
+            "rank": index + 1,
+            "text": document,
+            "source": metadata.get("source", ""),
+            "document_name": metadata.get("document_name", "Unknown source"),
+            "source_type": metadata.get("source_type", ""),
+            "chunk_index": metadata.get("chunk_index"),
+            "distance": distance,
+        }
+    
+    # Calculate vector-based scores with source/title boost
+    vector_scores = {}
+    for chunk_id, record in doc_map.items():
+        distance = record["distance"]
+        similarity_score = 1.0 - distance if distance is not None else 0.5
+        
+        # Source/title matching boost
+        boost = 0.0
+        doc_name = record["document_name"].lower()
+        source = record["source"].lower()
+        combined_text = f"{doc_name} {source}"
+        matching_terms = sum(1 for term in query_terms if term in combined_text)
+        if matching_terms > 0:
+            boost = 0.15 * (matching_terms / len(query_terms))
+        
+        vector_scores[chunk_id] = min(1.0, similarity_score + boost)
+    
+    # Calculate BM25 scores for the fetched candidates
+    try:
+        query_tokens = query.lower().split()
+        doc_texts = [record["text"] for record in doc_map.values()]
+        tokenized_docs = [doc.lower().split() for doc in doc_texts]
+        
+        bm25 = BM25Okapi(tokenized_docs)
+        bm25_scores_raw = bm25.get_scores(query_tokens)
+        
+        # Normalize BM25 scores to 0-1 range
+        bm25_scores = {}
+        max_bm25 = max(bm25_scores_raw) if bm25_scores_raw else 1.0
+        for i, chunk_id in enumerate(doc_map.keys()):
+            bm25_scores[chunk_id] = (bm25_scores_raw[i] / max_bm25) if max_bm25 > 0 else 0.0
+    except Exception as e:
+        if DEBUG:
+            print(f"BM25 scoring failed: {e}")
+        bm25_scores = {chunk_id: 0.0 for chunk_id in doc_map.keys()}
+    
+    # Combine scores: 50% vector + 50% BM25 (equal weight to both signals)
+    combined_scores = {}
+    for chunk_id in doc_map.keys():
+        vector_score = vector_scores.get(chunk_id, 0.0)
+        bm25_score = bm25_scores.get(chunk_id, 0.0)
+        combined_scores[chunk_id] = 0.5 * vector_score + 0.5 * bm25_score
+    
+    # Build final structured results and sort by combined score
+    structured_results = []
+    for chunk_id, record in doc_map.items():
+        structured_results.append({
+            **record,
+            "vector_score": vector_scores.get(chunk_id, 0.0),
+            "bm25_score": bm25_scores.get(chunk_id, 0.0),
+            "combined_score": combined_scores.get(chunk_id, 0.0),
+        })
+    
+    structured_results.sort(key=lambda x: x["combined_score"], reverse=True)
+    
+    # Update rank field after sorting
+    for i, result in enumerate(structured_results):
+        result["rank"] = i + 1
+    
+    # Return only top max_results
+    top_results = structured_results[:max_results]
+
+    if DEBUG:
+        print(f"Search query: '{query}' returned {len(documents)} candidates, ranked to {len(top_results)} results.")
+        for r in top_results:
+            print(f"  Rank {r['rank']}: vector={r['vector_score']:.3f} + bm25={r['bm25_score']:.3f} = {r['combined_score']:.3f} | {r['document_name']}")
 
     return {
         "query": query,
-        "low_confidence": len(structured_results) == 0,
-        "results": structured_results,
+        "low_confidence": len(top_results) == 0,
+        "results": top_results,
     }
 
 def clean_location_text(text: str) -> str:

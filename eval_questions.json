@@ -1,0 +1,396 @@
+[
+  {
+    "id": "shuttle_1",
+    "query": "Where does the UMass Boston shuttle go?",
+    "expected_terms": ["shuttle", "jfk", "bayside", "campus center"],
+    "expected_sources": ["shuttle-bus-information", "Shuttle Bus Information"],
+    "threshold": 0.5,
+    "ground_truth": "The shuttle connects JFK/UMass Station and Bayside Inbound with the Campus Center, with multiple campus stops."
+  },
+  {
+    "id": "shuttle_2",
+    "query": "What are the shuttle operating hours?",
+    "expected_terms": ["monday", "friday", "5:30", "1:30 a.m.", "saturday", "sunday"],
+    "expected_sources": ["shuttle-bus-information"],
+    "threshold": 0.5,
+    "ground_truth": "Monday-Friday 5:30 a.m. to 1:30 a.m. and Saturday-Sunday 7:30 a.m. to 1:30 a.m."
+  },
+  {
+    "id": "mbta_1",
+    "query": "What MBTA lines serve UMass Boston?",
+    "expected_terms": ["red line", "greenbush", "kingston", "middleborough", "route 8", "route 16"],
+    "expected_sources": ["mbta"],
+    "threshold": 0.5,
+    "ground_truth": "UMass Boston is served by the Red Line, Greenbush, Kingston, and Middleborough/Lakeville commuter rail lines, plus Route 8 and Route 16."
+  },
+  {
+    "id": "parking_rates_1",
+    "query": "How much is daily parking in the West Garage?",
+    "expected_terms": ["west garage", "$15", "daily", "evening", "weekend"],
+    "expected_sources": ["parking-rates"],
+    "threshold": 0.5,
+    "ground_truth": "West Garage daily rates go up to $15, with evening/weekend parking at $10."
+  },
+  {
+    "id": "parking_rates_2",
+    "query": "What is the daily rate for Campus Center Garage parking?",
+    "expected_terms": ["campus center garage", "$15", "daily rate"],
+    "expected_sources": ["parking-rates"],
+    "threshold": 0.5,
+    "ground_truth": "Campus Center Garage daily rate is $15.00, with evening/weekend rate of $10.00."
+  },
+  {
+    "id": "visitor_1",
+    "query": "Where should visitors park on campus?",
+    "expected_terms": ["west garage", "quad lot", "lot d", "campus center garage", "bayside"],
+    "expected_sources": ["visitor-resources"],
+    "threshold": 0.5,
+    "ground_truth": "Visitors are advised to park in the West Garage, Quad Lot, Lot D, Campus Center Garage, or Bayside depending on destination."
+  },
+  {
+    "id": "biking_1",
+    "query": "Where can I park my bike securely on campus?",
+    "expected_terms": ["west garage", "secured shelter", "bike parking", "529"],
+    "expected_sources": ["biking"],
+    "threshold": 0.5,
+    "ground_truth": "The West Garage secured shelter has 125-space indoor secure bike storage and requires Project 529 registration."
+  },
+  {
+    "id": "ev_1",
+    "query": "Where are the EV charging stations on campus?",
+    "expected_terms": ["west garage", "campus center garage", "quad lot", "chargepoint"],
+    "expected_sources": ["parking-rates", "commuting"],
+    "threshold": 0.5,
+    "ground_truth": "EV charging is available at West Garage, Campus Center Garage, and Quad Lot."
+  },
+  {
+    "id": "pass_replace_1",
+    "query": "Can I replace a lost MBTA commuter rail pass?",
+    "expected_terms": ["commuter rail", "boat passes", "not replaceable", "link", "bus passes"],
+    "expected_sources": ["mbta-pass-replacement-form"],
+    "threshold": 0.5,
+    "ground_truth": "Link or Bus passes may be replaced if lost or stolen, but MBTA Commuter Rail and Boat passes are not replaceable."
+  },
+  {
+    "id": "carpool_1",
+    "query": "How do I register for the carpool parking space program?",
+    "expected_terms": ["gomasscommute", "a better city", "carpool registration form", "preferential carpool spaces"],
+    "expected_sources": ["carpool-registration-form"],
+    "threshold": 0.5,
+    "ground_truth": "You must create an A Better City TMA GoMassCommute account before completing the Carpool Registration Form."
+  },
+  {
+    "id": "transport_contact_1",
+    "query": "What is the transportation services office address?",
+    "expected_terms": ["100 morrissey blvd", "service & supply", "lower level"],
+    "expected_sources": ["transportation"],
+    "threshold": 0.5,
+    "ground_truth": "Transportation Services is located at Service & Supply, Lower Level, 100 Morrissey Blvd."
+  },
+  {
+    "id": "positive_lost_found_location",
+    "query": "Where is UMass Boston Lost & Found located?",
+    "expected_terms": ["service and supply", "upper level", "0034", "lost & found"],
+    "expected_sources": ["campuspolicelostfound"],
+    "threshold": 0.65,
+    "ground_truth": "Lost & Found is in Service and Supply, Upper Level, 0034.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_lost_found_hours",
+    "query": "What are the Lost & Found hours?",
+    "expected_terms": ["monday", "friday", "7:30 a.m.", "3:30 p.m."],
+    "expected_sources": ["campuspolicelostfound"],
+    "threshold": 0.65,
+    "ground_truth": "Lost & Found is open Monday through Friday from 7:30 a.m. to 3:30 p.m.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_accessibility_parking",
+    "query": "Where is accessible parking available on campus?",
+    "expected_terms": ["campus center garage", "quad lot", "west garage", "lot d", "bayside lot"],
+    "expected_sources": ["accessibility"],
+    "threshold": 0.65,
+    "ground_truth": "Accessible paid parking is available in Campus Center Garage, Quad Lot, West Garage, Lot D, and Bayside Lot.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_accessibility_dropoff",
+    "query": "Where is the accessible drop off zone for commencement?",
+    "expected_terms": ["campus center", "university drive south", "drop off zone"],
+    "expected_sources": ["accessibility"],
+    "threshold": 0.65,
+    "ground_truth": "The accessible drop off zone is next to the Campus Center and accessed from University Drive South.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_computer_lab_hours",
+    "query": "What are the computer lab hours?",
+    "expected_terms": ["monday", "friday", "7:30 a.m.", "9:00 p.m.", "closed"],
+    "expected_sources": ["hours"],
+    "threshold": 0.65,
+    "ground_truth": "Computer labs are open Monday through Friday from 7:30 a.m. to 9:00 p.m. and closed on weekends.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_visitor_parking_options",
+    "query": "Where can visitors park at UMass Boston?",
+    "expected_terms": ["west garage", "quad lot", "lot d", "campus center garage", "bayside"],
+    "expected_sources": ["visitor resources"],
+    "threshold": 0.65,
+    "ground_truth": "Visitors can park in the West Garage, Quad Lot, Lot D, Campus Center Garage, or Bayside.",
+    "kind": "positive"
+  },
+  {
+    "id": "hard_negative_lost_found_911",
+    "query": "What number should I call for lost and found?",
+    "expected_terms": ["617.287.7799", "lost & found"],
+    "expected_sources": ["campuspolicelostfound"],
+    "threshold": 0.7,
+    "ground_truth": "Lost & Found can be reached at 617.287.7799.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_lost_found_service_supply",
+    "query": "Is lost and found in the police department front office?",
+    "expected_terms": ["service and supply", "upper level", "lost & found"],
+    "expected_sources": ["campuspolicelostfound"],
+    "threshold": 0.7,
+    "ground_truth": "Lost & Found is located in Service and Supply, Upper Level, 0034, not described as the police front office.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_computer_labs_weekend",
+    "query": "Are the computer labs open on Saturday?",
+    "expected_terms": ["closed", "weekends", "computer labs"],
+    "expected_sources": ["hours"],
+    "threshold": 0.7,
+    "ground_truth": "Computer labs are closed on Saturdays and Sundays.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_accessible_dropoff_parking",
+    "query": "Can I park at the accessible drop off zone?",
+    "expected_terms": ["parking is not allowed", "drop off zone"],
+    "expected_sources": ["accessibility"],
+    "threshold": 0.7,
+    "ground_truth": "Parking is not allowed at the accessible drop off zone; it is only for drop off or pick up.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_registrar_location",
+    "query": "Where is the Registrar's Office located?",
+    "expected_terms": ["campus center", "4th floor", "registrar"],
+    "expected_sources": ["registrar"],
+    "threshold": 0.7,
+    "ground_truth": "The Registrar's Office is on the 4th Floor of Campus Center, not the transportation office address at 100 Morrissey Blvd.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_bursar_location",
+    "query": "Where is the Bursar's Office located?",
+    "expected_terms": ["campus center", "4th floor", "bursar"],
+    "expected_sources": ["bursar"],
+    "threshold": 0.7,
+    "ground_truth": "The Bursar's Office is in Campus Center, 4th Floor, not just the shared Morrissey Boulevard footer address.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_math_tutoring_location",
+    "query": "Where is math tutoring held?",
+    "expected_terms": ["wheatley hall", "w-3-154-30", "tanimoto", "math"],
+    "expected_sources": ["math tutoring"],
+    "threshold": 0.7,
+    "ground_truth": "Math tutoring is in the Tanimoto Center, room W-3-154-30, on the third floor of Wheatley Hall.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_police_tip_line",
+    "query": "What is the UMass Boston police tip line?",
+    "expected_terms": ["617.287.5555", "tip line", "police"],
+    "expected_sources": ["campuspolicecontact"],
+    "threshold": 0.7,
+    "ground_truth": "The UMass Boston Police Tip Line is (617) 287-5555.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_police_mailing_address",
+    "query": "What is the mailing address for UMass Boston Police?",
+    "expected_terms": ["100 william t. morrissey blvd", "police department"],
+    "expected_sources": ["campuspolicecontact"],
+    "threshold": 0.7,
+    "ground_truth": "The police mailing address is Univ. of Mass Boston Police Department, 100 William T. Morrissey Blvd., Boston, MA 02125-3393.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_bursar_friday_hours",
+    "query": "What are the Bursar office hours on Friday?",
+    "expected_terms": ["friday", "10:00 am", "4:00 pm", "bursar"],
+    "expected_sources": ["bursar"],
+    "threshold": 0.7,
+    "ground_truth": "The Bursar's Office is open Friday from 10:00 a.m. to 4:00 p.m.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_registrar_email",
+    "query": "What is the Registrar's email address?",
+    "expected_terms": ["registrar@umb.edu", "get.records@umb.edu"],
+    "expected_sources": ["registrar"],
+    "threshold": 0.7,
+    "ground_truth": "The Registrar's Office emails include registrar@umb.edu and get.records@umb.edu.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "positive_safety_escort_phone",
+    "query": "How do I schedule a safety escort?",
+    "expected_terms": ["617.287.7777", "schedule", "safety escort", "location"],
+    "expected_sources": ["campuspolicesafetyescorts"],
+    "threshold": 0.7,
+    "ground_truth": "Call 617.287.7777 to schedule a safety escort.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_safety_escort_availability",
+    "query": "Are safety escorts available 24/7?",
+    "expected_terms": ["24", "7", "personal safety escorts", "24 hours a day"],
+    "expected_sources": ["campuspolicesafetyescorts"],
+    "threshold": 0.7,
+    "ground_truth": "UMass Public Safety provides campus community safety escorts 24 hours a day.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_it_service_location",
+    "query": "Where is the IT Service Desk located?",
+    "expected_terms": ["healey library", "3rd floor", "it service desk"],
+    "expected_sources": ["itservicecontact"],
+    "threshold": 0.7,
+    "ground_truth": "The IT Service Desk is on the 3rd floor of Healey Library.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_it_service_hours",
+    "query": "What are the IT Service Desk hours?",
+    "expected_terms": ["monday", "friday", "9 a.m.", "5 p.m."],
+    "expected_sources": ["itservicecontact"],
+    "threshold": 0.7,
+    "ground_truth": "The IT Service Desk is open Monday through Friday from 9 a.m. to 5 p.m.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_one_stop_location",
+    "query": "Where is The One Stop located?",
+    "expected_terms": ["campus center", "ground floor", "one stop"],
+    "expected_sources": ["one stop"],
+    "threshold": 0.7,
+    "ground_truth": "The One Stop is located on the ground floor of the Campus Center.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_dining_commons_location",
+    "query": "Where is Dining Commons located?",
+    "expected_terms": ["residence hall east", "100 william t. morrissey blvd", "dining commons"],
+    "expected_sources": ["diningcommons"],
+    "threshold": 0.7,
+    "ground_truth": "Dining Commons is in Residence Hall East at 100 William T. Morrissey Blvd.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_dining_commons_prices",
+    "query": "What is the dinner door price at Dining Commons?",
+    "expected_terms": ["dinner", "$16.75", "door price", "dining commons"],
+    "expected_sources": ["diningcommons"],
+    "threshold": 0.7,
+    "ground_truth": "The dinner door price at Dining Commons is $16.75.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_waterfront_location",
+    "query": "Where is Waterfront Recreation located?",
+    "expected_terms": ["fox point dock", "harbor walk", "columbia point"],
+    "expected_sources": ["waterfront recreation"],
+    "threshold": 0.7,
+    "ground_truth": "Waterfront Recreation is located at Fox Point Dock on Columbia Point next to UMass Boston.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_waterfront_hours",
+    "query": "What are Waterfront Recreation hours?",
+    "expected_terms": ["thursday", "sunday", "12pm", "7pm"],
+    "expected_sources": ["waterfront recreation"],
+    "threshold": 0.7,
+    "ground_truth": "Waterfront Recreation operates Thursday through Sunday from 12 p.m. to 7 p.m.",
+    "kind": "positive"
+  },
+  {
+    "id": "positive_food_court_hours",
+    "query": "What are the Campus Center Food Court hours?",
+    "expected_terms": ["campus center food court", "07:00 am", "07:00 pm"],
+    "expected_sources": ["cc_food court", "campus center food court"],
+    "threshold": 0.7,
+    "ground_truth": "The Campus Center Food Court has normal hours from 7:00 AM to 7:00 PM.",
+    "kind": "positive"
+  },
+  {
+    "id": "hard_negative_safety_escort_taxi",
+    "query": "Is the safety escort service a taxi service?",
+    "expected_terms": ["not a taxi service", "safety escort"],
+    "expected_sources": ["campuspolicesafetyescorts"],
+    "threshold": 0.8,
+    "ground_truth": "No. The safety escort service is not a taxi service.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_safety_escort_airport",
+    "query": "Can a safety escort take me to the airport?",
+    "expected_terms": ["airports", "not be provided", "safety escort"],
+    "expected_sources": ["campuspolicesafetyescorts"],
+    "threshold": 0.8,
+    "ground_truth": "No. Safety escort transportation will not be provided to airports.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_it_service_weekend",
+    "query": "Is the IT Service Desk open on weekends?",
+    "expected_terms": ["monday through friday", "9 a.m.", "5 p.m.", "weekends"],
+    "expected_sources": ["itservicecontact"],
+    "threshold": 0.8,
+    "ground_truth": "No. The IT Service Desk hours are Monday through Friday, 9 a.m. to 5 p.m.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_one_stop_residence_hall",
+    "query": "Is The One Stop in Residence Hall East?",
+    "expected_terms": ["campus center", "ground floor", "one stop"],
+    "expected_sources": ["onestop"],
+    "threshold": 0.8,
+    "ground_truth": "No. The One Stop is on the ground floor of the Campus Center, not Residence Hall East.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_dining_commons_campus_center",
+    "query": "Is Dining Commons in the Campus Center?",
+    "expected_terms": ["residence hall east", "dining commons"],
+    "expected_sources": ["diningcommons"],
+    "threshold": 0.8,
+    "ground_truth": "No. Dining Commons is in Residence Hall East.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_waterfront_sailing",
+    "query": "Can I go sailing at Waterfront Recreation?",
+    "expected_terms": ["sailing activities have been suspended", "not able to offer recreational sailing"],
+    "expected_sources": ["waterfront recreation"],
+    "threshold": 0.8,
+    "ground_truth": "No. Sailing activities are suspended and recreational sailing is not offered.",
+    "kind": "hard_negative"
+  },
+  {
+    "id": "hard_negative_waterfront_monday",
+    "query": "Is Waterfront Recreation open on Monday?",
+    "expected_terms": ["thursday", "sunday", "12pm", "7pm"],
+    "expected_sources": ["waterfront recreation"],
+    "threshold": 0.8,
+    "ground_truth": "No. Waterfront Recreation operates Thursday through Sunday.",
+    "kind": "hard_negative"
+  }
+]

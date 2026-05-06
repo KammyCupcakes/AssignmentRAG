@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Dict
 import chromadb
 from dotenv import load_dotenv
@@ -21,6 +22,51 @@ collection = chroma_client.get_or_create_collection(
     name="public_transportation",
     metadata={"hnsw:space": "cosine",}
 )
+
+PAGE_MARKER_RE = re.compile(r"^---\s*Page\s+\d+\s*---$", re.IGNORECASE)
+DATE_STAMP_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4},\s*\d{1,2}:\d{2}\s*[ap]m.*$", re.IGNORECASE)
+
+
+def normalize_line(line: str) -> str:
+    return re.sub(r"\s+", " ", (line or "").strip().lower())
+
+
+def is_boilerplate_line(line: str) -> bool:
+    normalized = normalize_line(line)
+    if not normalized:
+        return False
+
+    if PAGE_MARKER_RE.match(line.strip()):
+        return True
+
+    if DATE_STAMP_RE.match(normalized):
+        return True
+
+    if normalized in {"menu", "menu menu", "contact umass boston", "back to top", "contact us"}:
+        return True
+
+    if normalized.startswith(("home —", "home -")):
+        return True
+
+    if normalized.startswith(("", "")):
+        return True
+
+    if "menu menu" in normalized:
+        return True
+
+    if "back to top" in normalized:
+        return True
+
+    if "contact umass boston" in normalized:
+        return True
+
+    return False
+
+
+def clean_extracted_text(text: str) -> str:
+    # Temporarily disabled: cleanup was degrading retrieval quality.
+    # Query-time boilerplate filtering in prompt.py handles this instead.
+    return text.strip()
 
 def build_document_record(file_meta: Dict, text: str, source: str = "unknown") -> Dict:
         return {
@@ -89,15 +135,18 @@ def load_documents(data_path=DATA_PATH):
                     full_text += f"\n\n--- Page {page_number + 1} ---\n"
                     full_text += page_text
 
-            if full_text.strip():
+            cleaned_text = clean_extracted_text(full_text)
+
+            if cleaned_text.strip():
                 documents.append(
-                    build_document_record(file_meta={"document_name": filename, "path": file_path}, text=full_text)
+                    build_document_record(file_meta={"document_name": filename, "path": file_path}, text=cleaned_text)
                 )
     
     webdata = load_webdocs(urls=WEBCRAWL_URLS)
 
     for doc in webdata["documents"]:
-        documents.append(build_document_record(file_meta={"document_name": doc["title"], "path": doc["url"]}, text=doc["text"]))  # Add the web documents to the list of documents
+        cleaned_text = clean_extracted_text(doc["text"])
+        documents.append(build_document_record(file_meta={"document_name": doc["title"], "path": doc["url"]}, text=cleaned_text))  # Add the web documents to the list of documents
 
     if len(documents) == 0:
         raise FileNotFoundError(
