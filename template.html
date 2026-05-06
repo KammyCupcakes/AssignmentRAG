@@ -70,12 +70,12 @@
             
             suggestedQuestions.forEach(question => {
                 const btn = document.createElement('button');
+                btn.type = 'button';
                 btn.className = 'suggested-btn';
                 btn.textContent = question;
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    input.value = question;
-                    form.dispatchEvent(new Event('submit'));
+                    sendMessage(question);
                 });
                 suggestDiv.appendChild(btn);
             });
@@ -130,17 +130,32 @@
             chat.scrollTop = chat.scrollHeight;
         }
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const message = input.value;
+        function appendLoadingMessage() {
+            const loadingElement = document.createElement('div');
+            loadingElement.id = "loading-" + Date.now();
+            loadingElement.className = 'loading';
+
+            for (let i = 0; i < 3; i++) {
+                const dot = document.createElement('span');
+                dot.className = 'dot';
+                loadingElement.appendChild(dot);
+            }
+
+            chat.appendChild(loadingElement);
+            chat.scrollTop = chat.scrollHeight;
+            return loadingElement;
+        }
+
+        async function sendMessage(message) {
+            message = (message || '').trim();
+            if (!message) return;
+
             input.value = '';
             const userMessage = document.createElement('div');
             userMessage.className = 'message user';
             userMessage.textContent = message;
             chat.appendChild(userMessage);
-            const loadingMessage = "loading-" + Date.now();
-            chat.innerHTML += `<div id="${loadingMessage}" class="loading"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
-            chat.scrollTop = chat.scrollHeight;
+            const loadingElement = appendLoadingMessage();
 
             try {
                 const response = await fetch('/chat', {
@@ -152,7 +167,6 @@
                     })
                 });
                 const data = await response.json();
-                const loadingElement = document.getElementById(loadingMessage);
                 if (loadingElement) {
                     loadingElement.remove();
                 }
@@ -167,7 +181,6 @@
                 }
                 appendAssistantMessage(data.response, data.route_map_url, data.image_base64);
             } catch (error) {
-                const loadingElement = document.getElementById(loadingMessage);
                 if (loadingElement) {
                     loadingElement.remove();
                 }
@@ -178,6 +191,11 @@
                 chat.appendChild(errorMessage);
                 chat.scrollTop = chat.scrollHeight;
             }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await sendMessage(input.value);
         });
     </script>
 </body>
